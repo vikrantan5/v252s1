@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase/client";
 import { getJobById } from "@/lib/actions/job.action";
 import { getApplicationsByJob, updateApplication } from "@/lib/actions/application.action";
 import { getFeedbackByApplicationId } from "@/lib/actions/interview.action";
+import { createInterviewInvitation, sendInterviewInvitationEmail } from "@/lib/actions/interview-invitation.action";
 import { Application, Job, Feedback } from "@/types";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, Calendar, Award, CheckCircle, XCircle } from "lucide-react";
+import { Mail, Calendar, Award, CheckCircle, XCircle , Video ,Clock} from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -27,6 +32,17 @@ export default function ViewApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [feedbacks, setFeedbacks] = useState<Record<string, Feedback>>({});
   const [loading, setLoading] = useState(true);
+   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
+  const [inviteForm, setInviteForm] = useState({
+    interviewerName: "",
+    scheduledDate: "",
+    scheduledTime: "",
+    interviewType: "technical",
+    instructions: "",
+    meetingUrl: "",
+  });
+  const [sendingInvite, setSendingInvite] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -77,6 +93,81 @@ export default function ViewApplicationsPage() {
     }
   };
 
+
+  const handleScheduleInterview = (application: Application) => {
+    setSelectedApplication(application);
+    // Reset form
+    setInviteForm({
+      interviewerName: "",
+      scheduledDate: "",
+      scheduledTime: "",
+      interviewType: "technical",
+      instructions: "",
+      meetingUrl: "",
+    });
+    setShowInviteDialog(true);
+  };
+
+  const handleSendInvitation = async () => {
+    if (!selectedApplication || !job) return;
+
+    // Validate form
+    if (!inviteForm.interviewerName || !inviteForm.meetingUrl) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    setSendingInvite(true);
+    try {
+      // Combine date and time if provided
+      let scheduledDateTime: string | undefined;
+      if (inviteForm.scheduledDate && inviteForm.scheduledTime) {
+        scheduledDateTime = `${inviteForm.scheduledDate}T${inviteForm.scheduledTime}:00`;
+      }
+
+      // Create interview invitation in Supabase
+      const invitationResult = await createInterviewInvitation({
+        applicationId: selectedApplication.id,
+        meetingUrl: inviteForm.meetingUrl,
+        scheduledDate: scheduledDateTime,
+        interviewerName: inviteForm.interviewerName,
+        interviewType: inviteForm.interviewType,
+        interviewInstructions: inviteForm.instructions,
+        durationMinutes: 60,
+      });
+
+      if (!invitationResult.success) {
+        toast.error(invitationResult.error || "Failed to create invitation");
+        setSendingInvite(false);
+        return;
+      }
+
+      // Send email to student
+      const emailResult = await sendInterviewInvitationEmail({
+        invitationId: invitationResult.invitationId!,
+        studentEmail: selectedApplication.applicantEmail,
+        studentName: selectedApplication.applicantName,
+        companyName: job.companyName || "Our Company",
+        jobTitle: job.title,
+        interviewerName: inviteForm.interviewerName,
+        meetingUrl: inviteForm.meetingUrl,
+        scheduledDate: scheduledDateTime,
+      });
+
+      if (emailResult.success) {
+        toast.success("Interview invitation sent successfully! ✉️");
+        setShowInviteDialog(false);
+        await loadData();
+      } else {
+        toast.error(`Email failed: ${emailResult.error}`);
+      }
+    } catch (error: any) {
+      console.error("Send invitation error:", error);
+      toast.error(error.message || "Failed to send invitation");
+    } finally {
+      setSendingInvite(false);
+    }
+  };
   const filterApplications = (status?: string) => {
     if (!status) return applications;
     return applications.filter((app) => app.status === status);
@@ -179,6 +270,8 @@ export default function ViewApplicationsPage() {
                                 {app.status}
                               </Badge>
 
+                               <div className="flex gap-2">
+
                               <Select
                                 value={app.status}
                                 onValueChange={(value) => handleStatusChange(app.id, value)}
@@ -192,6 +285,17 @@ export default function ViewApplicationsPage() {
                                   <SelectItem value="rejected">Reject</SelectItem>
                                 </SelectContent>
                               </Select>
+                                       <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-2"
+                                  onClick={() => handleScheduleInterview(app)}
+                                  data-testid={`schedule-interview-${app.id}`}
+                                >
+                                  <Video className="h-4 w-4" />
+                                  Schedule
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         </CardHeader>
@@ -271,6 +375,173 @@ export default function ViewApplicationsPage() {
             </TabsContent>
           ))}
         </Tabs>
+
+           {/* Interview Invitation Dialog */}
+        <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Video className="h-5 w-5 text-blue-600" />
+                Schedule Interview
+              </DialogTitle>
+              <DialogDescription>
+                Send an interview invitation to {selectedApplication?.applicantName}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {/* Interviewer Name */}
+              <div className="space-y-2">
+                <Label htmlFor="interviewer-name">
+                  Interviewer Name <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="interviewer-name"
+                  placeholder="John Smith"
+                  value={inviteForm.interviewerName}
+                  onChange={(e) =>
+                    setInviteForm({ ...inviteForm, interviewerName: e.target.value })
+                  }
+                  required
+                />
+              </div>
+
+              {/* Interview Type */}
+              <div className="space-y-2">
+                <Label htmlFor="interview-type">Interview Type</Label>
+                <Select
+                  value={inviteForm.interviewType}
+                  onValueChange={(value) =>
+                    setInviteForm({ ...inviteForm, interviewType: value })
+                  }
+                >
+                  <SelectTrigger id="interview-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="technical">Technical Interview</SelectItem>
+                    <SelectItem value="hr">HR Interview</SelectItem>
+                    <SelectItem value="behavioral">Behavioral Interview</SelectItem>
+                    <SelectItem value="final">Final Round</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Date and Time */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="scheduled-date">
+                    Date <span className="text-sm text-gray-500">(Optional)</span>
+                  </Label>
+                  <Input
+                    id="scheduled-date"
+                    type="date"
+                    value={inviteForm.scheduledDate}
+                    onChange={(e) =>
+                      setInviteForm({ ...inviteForm, scheduledDate: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="scheduled-time">
+                    Time <span className="text-sm text-gray-500">(Optional)</span>
+                  </Label>
+                  <Input
+                    id="scheduled-time"
+                    type="time"
+                    value={inviteForm.scheduledTime}
+                    onChange={(e) =>
+                      setInviteForm({ ...inviteForm, scheduledTime: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Meeting URL */}
+              <div className="space-y-2">
+                <Label htmlFor="meeting-url">
+                  Meeting Link (Cal.com, Google Meet, Zoom) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="meeting-url"
+                  type="url"
+                  placeholder="https://cal.com/your-username/interview or https://meet.google.com/xxx-yyyy-zzz"
+                  value={inviteForm.meetingUrl}
+                  onChange={(e) =>
+                    setInviteForm({ ...inviteForm, meetingUrl: e.target.value })
+                  }
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  💡 Tip: Create a Cal.com booking link for scheduling flexibility, or generate a Google Meet link
+                </p>
+              </div>
+
+              {/* Instructions */}
+              <div className="space-y-2">
+                <Label htmlFor="instructions">
+                  Interview Instructions <span className="text-sm text-gray-500">(Optional)</span>
+                </Label>
+                <Textarea
+                  id="instructions"
+                  placeholder="Any specific instructions for the candidate (e.g., prepare coding environment, review specific topics, etc.)"
+                  value={inviteForm.instructions}
+                  onChange={(e) =>
+                    setInviteForm({ ...inviteForm, instructions: e.target.value })
+                  }
+                  rows={3}
+                />
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <Mail className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-semibold mb-1">Email Preview</p>
+                    <p>
+                      An interview invitation email will be sent to{" "}
+                      <strong>{selectedApplication?.applicantEmail}</strong> with:
+                    </p>
+                    <ul className="list-disc list-inside mt-2 space-y-1 text-blue-800">
+                      <li>Interview details and meeting link</li>
+                      <li>Date & time (if specified)</li>
+                      <li>Preparation tips</li>
+                      <li>Interviewer contact information</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowInviteDialog(false)}
+                disabled={sendingInvite}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendInvitation}
+                disabled={sendingInvite}
+                className="gap-2"
+              >
+                {sendingInvite ? (
+                  <>
+                    <Clock className="h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4" />
+                    Send Invitation
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

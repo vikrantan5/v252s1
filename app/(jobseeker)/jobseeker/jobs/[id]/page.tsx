@@ -6,7 +6,7 @@ import { auth } from "@/lib/firebase/client";
 import { getJobById } from "@/lib/actions/job.action";
 import { getUserById } from "@/lib/actions/auth.action";
 import { createApplication, checkExistingApplication } from "@/lib/actions/application.action";
-import { createInterview } from "@/lib/actions/interview.action";
+// import { createInterview } from "@/lib/actions/interview.action";
 import { getStudentProfile, checkProfileCompletion } from "@/lib/actions/profile.action";
 import { calculateSkillMatch } from "@/lib/utils/skillMatch";
 import { Job } from "@/types";
@@ -14,15 +14,9 @@ import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-// import { Briefcase, MapPin, DollarSign, Clock, Building2, Award } from "lucide-react";/
+
+
+
 import { Briefcase, MapPin, DollarSign, Clock, Building2, Award, AlertCircle, Target, CheckCircle2 } from "lucide-react";
 import { formatSalary, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -37,8 +31,7 @@ export default function JobDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
-  const [showInterviewModal, setShowInterviewModal] = useState(false);
-  const [applicationId, setApplicationId] = useState("");
+
   const [currentUserId, setCurrentUserId] = useState("");
     const [profileCompleted, setProfileCompleted] = useState(false);
   const [missingFields, setMissingFields] = useState<string[]>([]);
@@ -124,12 +117,11 @@ export default function JobDetailsPage() {
       });
 
       if (result.success && result.applicationId) {
-        setApplicationId(result.applicationId);
+     
         setHasApplied(true);
-        toast.success("Application submitted successfully!");
-        
-        // Show interview modal
-        setShowInterviewModal(true);
+         toast.success("Application submitted successfully! The recruiter will review your application.");
+        // Redirect to applications page
+        router.push("/jobseeker/applications");
       } else {
         toast.error(result.error || "Failed to apply");
       }
@@ -141,40 +133,7 @@ export default function JobDetailsPage() {
     }
   };
 
-  const handleStartInterview = async () => {
-    if (!job || !applicationId) return;
-
-    try {
-      const level = job.experience <= 2 ? "Junior" : job.experience <= 5 ? "Mid" : "Senior";
-
-      const result = await createInterview({
-        applicationId,
-        jobId: job.id,
-        role: job.role,
-        level,
-        techstack: job.techStack,
-        userId: currentUserId,
-        jobDescription: job.description,
-        experience: job.experience,
-      });
-
-      if (result.success && result.interviewId) {
-        toast.success("Interview generated! Redirecting...");
-        router.push(`/interview/${result.interviewId}`);
-      } else {
-        toast.error(result.error || "Failed to generate interview");
-      }
-    } catch (error) {
-      console.error("Interview error:", error);
-      toast.error("Failed to start interview");
-    }
-  };
-
-  const handleSkipInterview = () => {
-    setShowInterviewModal(false);
-    toast.info("You can take the interview later from My Applications");
-    router.push("/jobseeker/applications");
-  };
+  
 
   if (loading) {
     return (
@@ -394,12 +353,12 @@ export default function JobDetailsPage() {
               <p className="text-gray-700">{job.experience} years</p>
             </div>
 
-            <div className="flex items-start gap-2 bg-blue-50 p-4 rounded-lg">
-              <Award className="h-5 w-5 text-blue-600 mt-0.5" />
+                        <div className="flex items-start gap-2 bg-green-50 p-4 rounded-lg">
+              <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
               <div>
-                <p className="font-semibold text-blue-900">AI Interview Required</p>
-                <p className="text-sm text-blue-700 mt-1">
-                  After applying, you'll be invited to complete an AI-powered technical interview tailored to this role.
+                <p className="font-semibold text-green-900">Application Process</p>
+                <p className="text-sm text-green-700 mt-1">
+                  After applying, the recruiter will review your profile. If shortlisted, you'll receive an interview invitation via email.
                 </p>
               </div>
             </div>
@@ -412,34 +371,7 @@ export default function JobDetailsPage() {
         </p>
       </div>
 
-      {/* Interview Modal */}
-      <Dialog open={showInterviewModal} onOpenChange={setShowInterviewModal}>
-        <DialogContent data-testid="interview-modal">
-          <DialogHeader>
-            <DialogTitle>🎉 Application Submitted!</DialogTitle>
-            <DialogDescription>
-              Your application has been received. Would you like to take the AI interview now or schedule it for later?
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <p className="text-sm text-blue-900">
-                <strong>AI Interview:</strong> The interview will be tailored to the {job.title} role with questions covering {job.techStack.slice(0, 3).join(", ")} and more.
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={handleSkipInterview} data-testid="skip-interview-button">
-              Schedule Later
-            </Button>
-            <Button onClick={handleStartInterview} data-testid="start-interview-button">
-              Take Interview Now
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      
     </div>
   );
 }
