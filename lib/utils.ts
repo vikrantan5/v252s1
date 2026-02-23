@@ -23,5 +23,30 @@ export function formatSalary(salary: number): string {
 }
 
 export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  // Generate a proper UUID v4 (RFC4122 compliant)
+  // This is compatible with Supabase's UUID format
+  
+  // Try browser/Node.js 18+ crypto.randomUUID()
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  
+  // Try Node.js crypto module for server-side
+  if (typeof require !== 'undefined') {
+    try {
+      const { randomUUID } = require('crypto');
+      if (randomUUID) {
+        return randomUUID();
+      }
+    } catch (e) {
+      // Fall through to manual UUID generation
+    }
+  }
+  
+  // Fallback: Generate UUID v4 manually (RFC4122 compliant)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }

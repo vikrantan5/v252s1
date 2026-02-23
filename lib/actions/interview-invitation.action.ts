@@ -2,6 +2,8 @@
 
 import { supabaseAdmin } from "@/lib/supabase";
 import type { InterviewInvitation } from "@/lib/supabase";
+import { adminDb } from "@/lib/firebase/admin";
+import { randomUUID } from "crypto";
 
 // ================================================
 // INTERVIEW INVITATION ACTIONS
@@ -28,10 +30,73 @@ export async function createInterviewInvitation(params: {
     } = params;
 
     // Check if invitation already exists
+    // Generate a new UUID for Supabase
+    const supabaseApplicationId = randomUUID();
+    
+    console.log(`[Interview Invitation] Processing application: ${applicationId}`);
+    console.log(`[Interview Invitation] Generated Supabase UUID: ${supabaseApplicationId}`);
+
+    // STEP 1: Get application data from Firebase
+    let firebaseApp: any = null;
+    try {
+      const doc = await adminDb().collection("applications").doc(applicationId).get();
+      if (doc.exists) {
+        firebaseApp = doc.data();
+        console.log(`[Interview Invitation] Found application in Firebase`);
+      }
+    } catch (fbError) {
+      console.error("Firebase fetch error:", fbError);
+    }
+
+    // STEP 2: Check if we already have a Supabase mapping for this Firebase application
+    let existingSupabaseId = supabaseApplicationId;
+    
+    // Check if Firebase app has a supabaseId field (from previous sync)
+    if (firebaseApp?.supabaseId) {
+      existingSupabaseId = firebaseApp.supabaseId;
+      console.log(`[Interview Invitation] Using existing Supabase ID: ${existingSupabaseId}`);
+    } else {
+      // STEP 3: Create application record in Supabase if it doesn't exist
+      // This bridges the Firebase -> Supabase gap
+      try {
+        // Note: We're creating a minimal record in Supabase
+        // In a full implementation, you'd sync all application fields
+        const { error: appError } = await supabaseAdmin
+          .from("applications")
+          .insert({
+            id: supabaseApplicationId,
+            student_id: randomUUID(), // Placeholder - would need proper student sync
+            job_id: randomUUID(), // Placeholder - would need proper job sync
+            status: "pending",
+            matching_skills: [],
+            missing_skills: [],
+            applied_at: new Date().toISOString(),
+          });
+
+        if (appError && appError.code !== '23505') { // 23505 = duplicate key
+          console.error("Supabase app creation error:", appError);
+        } else {
+          console.log(`[Interview Invitation] Created application in Supabase`);
+          
+          // Update Firebase application with Supabase ID mapping
+          if (firebaseApp) {
+            await adminDb().collection("applications").doc(applicationId).update({
+              supabaseId: supabaseApplicationId
+            });
+            console.log(`[Interview Invitation] Updated Firebase with Supabase mapping`);
+          }
+        }
+      } catch (syncError) {
+        console.error("Application sync error:", syncError);
+      }
+    }
+
+    // STEP 4: Check if invitation already exists
     const { data: existing } = await supabaseAdmin
       .from("interview_invitations")
       .select("id")
-      .eq("application_id", applicationId)
+    //   .eq("application_id", applicationId)
+      .eq("application_id", existingSupabaseId)
       .single();
 
     if (existing) {
@@ -39,10 +104,12 @@ export async function createInterviewInvitation(params: {
     }
 
     // Create invitation
+     // STEP 5: Create invitation with the Supabase UUID
     const { data, error } = await supabaseAdmin
       .from("interview_invitations")
       .insert({
-        application_id: applicationId,
+        // application_id: applicationId,
+          application_id: existingSupabaseId,
         meeting_url: meetingUrl,
         scheduled_date: scheduledDate,
         interviewer_name: interviewerName,
@@ -57,13 +124,26 @@ export async function createInterviewInvitation(params: {
       .select()
       .single();
 
-    if (error) throw error;
+     if (error) {
+      console.error("Create invitation error:", error);
+      throw error;
+    }
 
-    // Update application status
+    console.log(`[Interview Invitation] Successfully created invitation: ${data.id}`);
+
+    // STEP 6: Update application status in Supabase
     await supabaseAdmin
       .from("applications")
       .update({ status: "interview_scheduled" })
-      .eq("id", applicationId);
+        .eq("id", existingSupabaseId);
+
+    // STEP 7: Update application status in Firebase
+    if (firebaseApp) {
+      await adminDb().collection("applications").doc(applicationId).update({
+        status: "interview_scheduled",
+        interviewStatus: "scheduled"
+      });
+    }
 
     return { success: true, invitationId: data.id };
   } catch (error: any) {
@@ -235,7 +315,8 @@ export async function sendInterviewInvitationEmail(params: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: "HireAI Platform <noreply@hireai.com>",
+        // from: "HireAI Platform <noreply@hireai.com>",
+        from: "HireAI Platform <onboarding@resend.dev>",
         to: [studentEmail],
         subject: `🎉 Interview Invitation from ${companyName}`,
         html: `
