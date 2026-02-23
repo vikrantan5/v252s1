@@ -40,8 +40,17 @@ export async function createInterviewInvitation(params: {
     const firebaseApp = doc.data();
     console.log(`[Interview Invitation] Found application in Firebase`);
 
+    // Validate Firebase app data
+    if (!firebaseApp) {
+      return { success: false, error: "Application data is empty" };
+    }
+
+    if (!firebaseApp.applicantId) {
+      return { success: false, error: "Applicant ID not found in application data" };
+    }
+
     // STEP 2: Check if we already have a Supabase mapping
-    if (firebaseApp?.supabaseId) {
+    if (firebaseApp.supabaseId) {
       console.log(`[Interview Invitation] Using existing Supabase ID: ${firebaseApp.supabaseId}`);
       
       // Check if invitation already exists for this application
@@ -62,9 +71,10 @@ export async function createInterviewInvitation(params: {
     const { data: student, error: studentError } = await supabaseAdmin
       .from("students_profile")
       .select("id")
-      .eq("firebase_uid", firebaseApp.applicantId)
-      .maybeSingle(); // Use maybeSingle instead of single to avoid error when not found
+      .eq("firebase_uid", firebaseApp.applicantId) // Now TypeScript knows this is safe
+      .maybeSingle();
 
+    // Rest of the function continues...
     if (studentError || !student) {
       console.error(`Student not found in Supabase for Firebase UID: ${firebaseApp.applicantId}`);
       
@@ -138,6 +148,23 @@ export async function createInterviewInvitation(params: {
       } else {
         // Create new application in Supabase with REAL IDs
         supabaseApplicationId = randomUUID(); // Use randomUUID for the application record itself
+
+         // Map Firebase status to valid Supabase status
+        // Valid Supabase statuses: 'pending', 'shortlisted', 'rejected', 'interview_scheduled', 'selected', 'withdrawn'
+        const mapFirebaseStatusToSupabase = (firebaseStatus: string): string => {
+          const statusMap: { [key: string]: string } = {
+            'accepted': 'shortlisted',
+            'pending': 'pending',
+            'shortlisted': 'shortlisted',
+            'rejected': 'rejected',
+            'interview_scheduled': 'interview_scheduled',
+            'selected': 'selected',
+            'withdrawn': 'withdrawn',
+          };
+          return statusMap[firebaseStatus] || 'pending';
+        };
+
+        const mappedStatus = mapFirebaseStatusToSupabase(firebaseApp?.status || 'pending');
         
         const { error: appError } = await supabaseAdmin
           .from("applications")
@@ -145,7 +172,8 @@ export async function createInterviewInvitation(params: {
             id: supabaseApplicationId,
             student_id: studentId, // Use REAL student ID from Supabase
             job_id: jobId, // Use REAL job ID from Supabase
-            status: firebaseApp?.status || "pending",
+            // status: firebaseApp?.status || "pending",
+              status: mappedStatus,
             skill_match_score: firebaseApp?.skillMatchScore || 0,
             matching_skills: firebaseApp?.matchingSkills || [],
             missing_skills: firebaseApp?.missingSkills || [],
@@ -159,7 +187,8 @@ export async function createInterviewInvitation(params: {
           throw appError;
         }
 
-        console.log(`[Interview Invitation] Created application in Supabase: ${supabaseApplicationId}`);
+        // console.log(`[Interview Invitation] Created application in Supabase: ${supabaseApplicationId}`);
+          console.log(`[Interview Invitation] Created application in Supabase: ${supabaseApplicationId} with status: ${mappedStatus}`);
       }
 
       // Update Firebase with Supabase ID
@@ -250,8 +279,13 @@ async function syncStudentToSupabase(firebaseUid: string): Promise<{ success: bo
     }
 
     const studentData = studentDoc.data();
+    
+    // Validate student data
+    if (!studentData) {
+      return { success: false, error: "Student data is empty" };
+    }
 
-    // Create student in Supabase
+    // Create student in Supabase with safe defaults
     const { data: newStudent, error } = await supabaseAdmin
       .from("students_profile")
       .insert({
@@ -286,6 +320,7 @@ async function syncStudentToSupabase(firebaseUid: string): Promise<{ success: bo
 }
 
 // Helper function to sync job to Supabase
+// Helper function to sync job to Supabase
 async function syncJobToSupabase(firebaseJobId: string): Promise<{ success: boolean; jobId?: string; error?: string }> {
   try {
     // Check if job already exists
@@ -306,36 +341,50 @@ async function syncJobToSupabase(firebaseJobId: string): Promise<{ success: bool
     }
 
     const jobData = jobDoc.data();
+    
+    // Validate job data
+    if (!jobData) {
+      return { success: false, error: "Job data is empty" };
+    }
+
+    // Validate required fields
+    if (!jobData.recruiterId) {
+      return { success: false, error: "Recruiter ID not found in job data" };
+    }
+
+    console.log("Syncing job:", firebaseJobId);
+    console.log("Firebase job exists:", jobDoc.exists);
+    console.log("Job data:", jobData);
 
     // Get recruiter from Supabase
     let recruiterId: string;
 
-const { data: recruiter } = await supabaseAdmin
-  .from("recruiters")
-  .select("id")
-  .eq("firebase_uid", jobData.recruiterId)
-  .maybeSingle();
+    const { data: recruiter } = await supabaseAdmin
+      .from("recruiters")
+      .select("id")
+      .eq("firebase_uid", jobData.recruiterId) // Now safe because we validated above
+      .maybeSingle();
 
-if (!recruiter) {
-  const recruiterSync = await syncRecruiterToSupabase(jobData.recruiterId);
+    if (!recruiter) {
+      const recruiterSync = await syncRecruiterToSupabase(jobData.recruiterId);
 
-  if (!recruiterSync.success) {
-    return { success: false, error: recruiterSync.error };
-  }
+      if (!recruiterSync.success) {
+        return { success: false, error: recruiterSync.error };
+      }
 
-  recruiterId = recruiterSync.recruiterId!;
-} else {
-  recruiterId = recruiter.id;
-}
+      recruiterId = recruiterSync.recruiterId!;
+    } else {
+      recruiterId = recruiter.id;
+    }
 
-    // Create job in Supabase
+    // Create job in Supabase with safe defaults
     const { data: newJob, error } = await supabaseAdmin
       .from("platform_jobs")
       .insert({
         firebase_id: firebaseJobId,
-       recruiter_id: recruiterId,
-        job_title: jobData.title,
-        job_description: jobData.description,
+        recruiter_id: recruiterId,
+        job_title: jobData.title || "",
+        job_description: jobData.description || "",
         required_skills: jobData.requiredSkills || [],
         experience_required: jobData.experienceRequired || 0,
         salary_min: jobData.salaryMin || null,
@@ -357,17 +406,14 @@ if (!recruiter) {
       .single();
 
     if (error) throw error;
+    
+    console.log("Job synced successfully:", firebaseJobId);
     return { success: true, jobId: newJob.id };
+    
   } catch (error: any) {
     console.error("Sync job error:", error);
     return { success: false, error: error.message };
   }
-
-
-
-  console.log("Syncing job:", firebaseJobId);
-console.log("Firebase job exists:", jobDoc.exists);
-console.log("Job data:", jobData);
 }
 
 // ... rest of your functions remain the same ...
@@ -716,14 +762,13 @@ export async function generateGoogleMeetLink(params: {
   }
 }
 
-
 async function syncRecruiterToSupabase(firebaseUid: string): Promise<{
   success: boolean;
   recruiterId?: string;
   error?: string;
 }> {
   try {
-    // already exists?
+    // Check if already exists
     const { data: existing } = await supabaseAdmin
       .from("recruiters")
       .select("id")
@@ -734,7 +779,7 @@ async function syncRecruiterToSupabase(firebaseUid: string): Promise<{
       return { success: true, recruiterId: existing.id };
     }
 
-    // fetch from Firebase
+    // Fetch from Firebase
     const recruiterDoc = await adminDb()
       .collection("recruiters")
       .doc(firebaseUid)
@@ -745,8 +790,13 @@ async function syncRecruiterToSupabase(firebaseUid: string): Promise<{
     }
 
     const recruiterData = recruiterDoc.data();
+    
+    // Validate recruiter data
+    if (!recruiterData) {
+      return { success: false, error: "Recruiter data is empty" };
+    }
 
-    // insert into Supabase
+    // Insert into Supabase
     const { data, error } = await supabaseAdmin
       .from("recruiters")
       .insert({
@@ -765,8 +815,7 @@ async function syncRecruiterToSupabase(firebaseUid: string): Promise<{
 
     return { success: true, recruiterId: data.id };
   } catch (err: any) {
+    console.error("Sync recruiter error:", err);
     return { success: false, error: err.message };
   }
 }
-
-

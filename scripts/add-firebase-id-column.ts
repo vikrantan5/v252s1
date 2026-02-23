@@ -1,10 +1,10 @@
 /**
  * Add firebase_id column to platform_jobs table
- * This script uses Supabase REST API to execute SQL
  */
 
 import { config } from "dotenv";
 import { resolve } from "path";
+import { createClient } from '@supabase/supabase-js';
 
 config({ path: resolve(process.cwd(), ".env.local") });
 
@@ -16,51 +16,53 @@ if (!supabaseUrl || !supabaseServiceKey) {
   process.exit(1);
 }
 
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
 async function addFirebaseIdColumn() {
   console.log("🔧 Adding firebase_id column to platform_jobs table...");
   
-  const sql = `
-    -- Add firebase_id column
-    ALTER TABLE public.platform_jobs 
-    ADD COLUMN IF NOT EXISTS firebase_id TEXT UNIQUE;
-    
-    -- Add index
-    CREATE INDEX IF NOT EXISTS idx_platform_jobs_firebase_id 
-    ON public.platform_jobs(firebase_id);
-  `;
-  
   try {
-    // Use Supabase REST API to execute SQL
-    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/exec_sql`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': supabaseServiceKey,
-        'Authorization': `Bearer ${supabaseServiceKey}`
-      },
-      body: JSON.stringify({ query: sql })
-    });
+    // Check if column exists by trying to select it
+    const { error: checkError } = await supabase
+      .from('platform_jobs')
+      .select('firebase_id')
+      .limit(1);
     
-    if (!response.ok) {
-      console.log("⚠️  Note: Direct SQL execution via API is not available.");
-      console.log("📝 Please run this SQL manually in Supabase SQL Editor:");
+    // If error contains "column does not exist", we need to add it
+    if (checkError && checkError.message.includes('column "firebase_id" does not exist')) {
+      console.log("📝 Column doesn't exist. Please run this SQL in Supabase SQL Editor:");
       console.log("════════════════════════════════════════════════════════════");
-      console.log(sql);
+      console.log(`
+-- Add firebase_id column
+ALTER TABLE public.platform_jobs 
+ADD COLUMN IF NOT EXISTS firebase_id TEXT UNIQUE;
+
+-- Add index
+CREATE INDEX IF NOT EXISTS idx_platform_jobs_firebase_id 
+ON public.platform_jobs(firebase_id);
+      `);
       console.log("════════════════════════════════════════════════════════════");
-      console.log("After running the SQL, execute: yarn sync-all-jobs");
-      return;
+    } else {
+      console.log("✅ Column already exists or can be queried!");
     }
     
-    console.log("✅ Column added successfully!");
-    
   } catch (error: any) {
-    console.log("⚠️  Could not add column automatically.");
+    console.log("⚠️  Could not check column automatically.");
     console.log("📝 Please run this SQL manually in Supabase SQL Editor:");
     console.log("════════════════════════════════════════════════════════════");
-    console.log(sql);
+    console.log(`
+-- Add firebase_id column
+ALTER TABLE public.platform_jobs 
+ADD COLUMN IF NOT EXISTS firebase_id TEXT UNIQUE;
+
+-- Add index
+CREATE INDEX IF NOT EXISTS idx_platform_jobs_firebase_id 
+ON public.platform_jobs(firebase_id);
+    `);
     console.log("════════════════════════════════════════════════════════════");
-    console.log("After running the SQL, execute: yarn sync-all-jobs");
   }
+  
+  console.log("\n📋 After adding the column, run: yarn sync-all-jobs");
 }
 
 addFirebaseIdColumn();

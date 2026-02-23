@@ -108,66 +108,79 @@ export default function ViewApplicationsPage() {
     setShowInviteDialog(true);
   };
 
-  const handleSendInvitation = async () => {
-    if (!selectedApplication || !job) return;
+const handleSendInvitation = async () => {
+  if (!selectedApplication || !job) return;
 
-    // Validate form
-    if (!inviteForm.interviewerName || !inviteForm.meetingUrl) {
-      toast.error("Please fill in all required fields");
+  // Validate form
+  if (!inviteForm.interviewerName || !inviteForm.meetingUrl) {
+    toast.error("Please fill in all required fields");
+    return;
+  }
+
+  // Validate applicant has email and name
+  if (!selectedApplication.applicantEmail) {
+    toast.error("Cannot send invitation: Applicant email is missing");
+    setSendingInvite(false);
+    return;
+  }
+
+  if (!selectedApplication.applicantName) {
+    toast.error("Cannot send invitation: Applicant name is missing");
+    setSendingInvite(false);
+    return;
+  }
+
+  setSendingInvite(true);
+  try {
+    // Combine date and time if provided
+    let scheduledDateTime: string | undefined;
+    if (inviteForm.scheduledDate && inviteForm.scheduledTime) {
+      scheduledDateTime = `${inviteForm.scheduledDate}T${inviteForm.scheduledTime}:00`;
+    }
+
+    // Create interview invitation in Supabase
+    const invitationResult = await createInterviewInvitation({
+      applicationId: selectedApplication.id,
+      meetingUrl: inviteForm.meetingUrl,
+      scheduledDate: scheduledDateTime,
+      interviewerName: inviteForm.interviewerName,
+      interviewType: inviteForm.interviewType,
+      interviewInstructions: inviteForm.instructions,
+      durationMinutes: 60,
+    });
+
+    if (!invitationResult.success) {
+      toast.error(invitationResult.error || "Failed to create invitation");
+      setSendingInvite(false);
       return;
     }
 
-    setSendingInvite(true);
-    try {
-      // Combine date and time if provided
-      let scheduledDateTime: string | undefined;
-      if (inviteForm.scheduledDate && inviteForm.scheduledTime) {
-        scheduledDateTime = `${inviteForm.scheduledDate}T${inviteForm.scheduledTime}:00`;
-      }
+    // Send email to student - Now TypeScript knows these are strings
+    const emailResult = await sendInterviewInvitationEmail({
+      invitationId: invitationResult.invitationId!,
+      studentEmail: selectedApplication.applicantEmail, // Now safe
+      studentName: selectedApplication.applicantName,   // Now safe
+      companyName: job.companyName || "Our Company",
+      jobTitle: job.title,
+      interviewerName: inviteForm.interviewerName,
+      meetingUrl: inviteForm.meetingUrl,
+      scheduledDate: scheduledDateTime,
+    });
 
-      // Create interview invitation in Supabase
-      const invitationResult = await createInterviewInvitation({
-        applicationId: selectedApplication.id,
-        meetingUrl: inviteForm.meetingUrl,
-        scheduledDate: scheduledDateTime,
-        interviewerName: inviteForm.interviewerName,
-        interviewType: inviteForm.interviewType,
-        interviewInstructions: inviteForm.instructions,
-        durationMinutes: 60,
-      });
-
-      if (!invitationResult.success) {
-        toast.error(invitationResult.error || "Failed to create invitation");
-        setSendingInvite(false);
-        return;
-      }
-
-      // Send email to student
-      const emailResult = await sendInterviewInvitationEmail({
-        invitationId: invitationResult.invitationId!,
-        studentEmail: selectedApplication.applicantEmail,
-        studentName: selectedApplication.applicantName,
-        companyName: job.companyName || "Our Company",
-        jobTitle: job.title,
-        interviewerName: inviteForm.interviewerName,
-        meetingUrl: inviteForm.meetingUrl,
-        scheduledDate: scheduledDateTime,
-      });
-
-      if (emailResult.success) {
-        toast.success("Interview invitation sent successfully! ✉️");
-        setShowInviteDialog(false);
-        await loadData();
-      } else {
-        toast.error(`Email failed: ${emailResult.error}`);
-      }
-    } catch (error: any) {
-      console.error("Send invitation error:", error);
-      toast.error(error.message || "Failed to send invitation");
-    } finally {
-      setSendingInvite(false);
+    if (emailResult.success) {
+      toast.success("Interview invitation sent successfully! ✉️");
+      setShowInviteDialog(false);
+      await loadData();
+    } else {
+      toast.error(`Email failed: ${emailResult.error}`);
     }
-  };
+  } catch (error: any) {
+    console.error("Send invitation error:", error);
+    toast.error(error.message || "Failed to send invitation");
+  } finally {
+    setSendingInvite(false);
+  }
+};
   const filterApplications = (status?: string) => {
     if (!status) return applications;
     return applications.filter((app) => app.status === status);
