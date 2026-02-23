@@ -2,12 +2,13 @@
 
 import { adminDb, adminAuth } from "@/lib/firebase/admin";
 import { SignInParams, SignUpParams, User } from "@/types";
+import { syncUserToSupabase } from "./profile.action";
 
 export async function signUp(params: SignUpParams): Promise<{ success: boolean; error?: string }> {
   try {
     const { uid, name, email, role, phoneNumber } = params;
 
-    // Create user document in Firestore
+    // Create user document in Firestore (keeping for backward compatibility)
     const userDoc: User = {
       id: uid,
       name,
@@ -21,6 +22,20 @@ export async function signUp(params: SignUpParams): Promise<{ success: boolean; 
     };
 
     await adminDb().collection("users").doc(uid).set(userDoc);
+
+     // Sync to Supabase
+    const supabaseSync = await syncUserToSupabase({
+      firebaseUid: uid,
+      email,
+      fullName: name,
+      role,
+      phone: phoneNumber,
+    });
+
+    if (!supabaseSync.success) {
+      console.error("Supabase sync failed:", supabaseSync.error);
+      // Don't fail signup if Supabase sync fails - log and continue
+    }
 
     return { success: true };
   } catch (error: any) {
