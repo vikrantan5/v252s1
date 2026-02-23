@@ -58,27 +58,50 @@ export default function ViewSupabaseApplicationsPage() {
   }, [router, jobId]);
 
   const loadData = async () => {
-    setLoading(true);
-    
-    const [jobResult, appsResult] = await Promise.all([
-      getSupabaseJob(jobId),
-      getJobApplications(jobId),
-    ]);
+  setLoading(true);
 
-    if (jobResult.success) {
-      setJob(jobResult.job);
+  // Step 1 — try getting job from Supabase
+  let jobResult = await getSupabaseJob(jobId);
+
+  // Step 2 — if not found → sync job first
+  if (!jobResult.success || !jobResult.job) {
+    console.log("Job missing in Supabase → syncing...");
+
+    const syncRes = await fetch("/api/sync-job", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ firebaseJobId: jobId }),
+    });
+
+    const syncData = await syncRes.json();
+
+    if (!syncData.success) {
+      console.error("Job sync failed:", syncData.error);
+      toast.error("Failed to sync job data");
+      setLoading(false);
+      return;
     }
 
-    if (appsResult.success) {
-      // Sort by skill match score (highest first)
-      const sortedApps = (appsResult.applications || []).sort(
-        (a: any, b: any) => (b.skill_match_score || 0) - (a.skill_match_score || 0)
-      );
-      setApplications(sortedApps);
-    }
+    // fetch again after sync
+    jobResult = await getSupabaseJob(jobId);
+  }
 
-    setLoading(false);
-  };
+  // Step 3 — fetch applications normally
+  const appsResult = await getJobApplications(jobId);
+
+  if (jobResult.success) {
+    setJob(jobResult.job);
+  }
+
+  if (appsResult.success) {
+    const sortedApps = (appsResult.applications || []).sort(
+      (a: any, b: any) => (b.skill_match_score || 0) - (a.skill_match_score || 0)
+    );
+    setApplications(sortedApps);
+  }
+
+  setLoading(false);
+};
 
   const handleStatusChange = async (applicationId: string, newStatus: string) => {
     const result = await updateApplicationStatus(applicationId, newStatus as any);

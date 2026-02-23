@@ -308,22 +308,32 @@ async function syncJobToSupabase(firebaseJobId: string): Promise<{ success: bool
     const jobData = jobDoc.data();
 
     // Get recruiter from Supabase
-    const { data: recruiter } = await supabaseAdmin
-      .from("recruiters")
-      .select("id")
-      .eq("firebase_uid", jobData.recruiterId)
-      .single();
+    let recruiterId: string;
 
-    if (!recruiter) {
-      return { success: false, error: "Recruiter not found in Supabase" };
-    }
+const { data: recruiter } = await supabaseAdmin
+  .from("recruiters")
+  .select("id")
+  .eq("firebase_uid", jobData.recruiterId)
+  .maybeSingle();
+
+if (!recruiter) {
+  const recruiterSync = await syncRecruiterToSupabase(jobData.recruiterId);
+
+  if (!recruiterSync.success) {
+    return { success: false, error: recruiterSync.error };
+  }
+
+  recruiterId = recruiterSync.recruiterId!;
+} else {
+  recruiterId = recruiter.id;
+}
 
     // Create job in Supabase
     const { data: newJob, error } = await supabaseAdmin
       .from("platform_jobs")
       .insert({
         firebase_id: firebaseJobId,
-        recruiter_id: recruiter.id,
+       recruiter_id: recruiterId,
         job_title: jobData.title,
         job_description: jobData.description,
         required_skills: jobData.requiredSkills || [],
@@ -352,6 +362,12 @@ async function syncJobToSupabase(firebaseJobId: string): Promise<{ success: bool
     console.error("Sync job error:", error);
     return { success: false, error: error.message };
   }
+
+
+
+  console.log("Syncing job:", firebaseJobId);
+console.log("Firebase job exists:", jobDoc.exists);
+console.log("Job data:", jobData);
 }
 
 // ... rest of your functions remain the same ...
@@ -699,3 +715,58 @@ export async function generateGoogleMeetLink(params: {
     return { success: false, error: error.message };
   }
 }
+
+
+async function syncRecruiterToSupabase(firebaseUid: string): Promise<{
+  success: boolean;
+  recruiterId?: string;
+  error?: string;
+}> {
+  try {
+    // already exists?
+    const { data: existing } = await supabaseAdmin
+      .from("recruiters")
+      .select("id")
+      .eq("firebase_uid", firebaseUid)
+      .maybeSingle();
+
+    if (existing) {
+      return { success: true, recruiterId: existing.id };
+    }
+
+    // fetch from Firebase
+    const recruiterDoc = await adminDb()
+      .collection("recruiters")
+      .doc(firebaseUid)
+      .get();
+
+    if (!recruiterDoc.exists) {
+      return { success: false, error: "Recruiter not found in Firebase" };
+    }
+
+    const recruiterData = recruiterDoc.data();
+
+    // insert into Supabase
+    const { data, error } = await supabaseAdmin
+      .from("recruiters")
+      .insert({
+        firebase_uid: firebaseUid,
+        full_name: recruiterData.full_name || "",
+        email: recruiterData.email || "",
+        company_name: recruiterData.company_name || "",
+        company_logo_url: recruiterData.company_logo_url || "",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+
+    return { success: true, recruiterId: data.id };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+
