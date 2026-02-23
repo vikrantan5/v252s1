@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+     "sync-all-jobs": "tsx scripts/sync-all-jobs.ts",
+    "add-firebase-column": "tsx scripts/add-firebase-id-column.ts",
+   "test-interview-flow": "NODE_OPTIONS='--require dotenv/config' DOTENV_CONFIG_PATH=.env.local tsx scripts/test-interview-flow.ts",
+    "check-schema": "tsx scripts/check-schema.ts",
      "sync-job-ids": "tsx scripts/sync-job-ids.ts",
     "scrape": "ts-node cron/scrapeJobs.ts"
   },
