@@ -29,87 +29,164 @@ export async function createInterviewInvitation(params: {
       durationMinutes = 60,
     } = params;
 
-    // Check if invitation already exists
-    // Generate a new UUID for Supabase
-    const supabaseApplicationId = randomUUID();
-    
     console.log(`[Interview Invitation] Processing application: ${applicationId}`);
-    console.log(`[Interview Invitation] Generated Supabase UUID: ${supabaseApplicationId}`);
 
     // STEP 1: Get application data from Firebase
-    let firebaseApp: any = null;
-    try {
-      const doc = await adminDb().collection("applications").doc(applicationId).get();
-      if (doc.exists) {
-        firebaseApp = doc.data();
-        console.log(`[Interview Invitation] Found application in Firebase`);
+    const doc = await adminDb().collection("applications").doc(applicationId).get();
+    if (!doc.exists) {
+      return { success: false, error: "Application not found in Firebase" };
+    }
+    
+    const firebaseApp = doc.data();
+    console.log(`[Interview Invitation] Found application in Firebase`);
+
+    // STEP 2: Check if we already have a Supabase mapping
+    if (firebaseApp?.supabaseId) {
+      console.log(`[Interview Invitation] Using existing Supabase ID: ${firebaseApp.supabaseId}`);
+      
+      // Check if invitation already exists for this application
+      const { data: existing } = await supabaseAdmin
+        .from("interview_invitations")
+        .select("id")
+        .eq("application_id", firebaseApp.supabaseId)
+        .maybeSingle();
+
+      if (existing) {
+        return { success: false, error: "Interview invitation already sent for this application" };
       }
-    } catch (fbError) {
-      console.error("Firebase fetch error:", fbError);
     }
 
-    // STEP 2: Check if we already have a Supabase mapping for this Firebase application
-    let existingSupabaseId = supabaseApplicationId;
-    
-    // Check if Firebase app has a supabaseId field (from previous sync)
-    if (firebaseApp?.supabaseId) {
-      existingSupabaseId = firebaseApp.supabaseId;
-      console.log(`[Interview Invitation] Using existing Supabase ID: ${existingSupabaseId}`);
-    } else {
-      // STEP 3: Create application record in Supabase if it doesn't exist
-      // This bridges the Firebase -> Supabase gap
+    // STEP 3: Get student from Supabase using Firebase UID
+    let studentId: string | null = null;
+
+    const { data: student, error: studentError } = await supabaseAdmin
+      .from("students_profile")
+      .select("id")
+      .eq("firebase_uid", firebaseApp.applicantId)
+      .maybeSingle(); // Use maybeSingle instead of single to avoid error when not found
+
+    if (studentError || !student) {
+      console.error(`Student not found in Supabase for Firebase UID: ${firebaseApp.applicantId}`);
+      
+      // Try to sync student from Firebase to Supabase
       try {
-        // Note: We're creating a minimal record in Supabase
-        // In a full implementation, you'd sync all application fields
+        const studentSyncResult = await syncStudentToSupabase(firebaseApp.applicantId);
+        if (!studentSyncResult.success) {
+          return { 
+            success: false, 
+            error: `Student with Firebase UID ${firebaseApp.applicantId} not found in Supabase. Please ensure student profile is synced.` 
+          };
+        }
+        studentId = studentSyncResult.studentId!;
+      } catch (syncError: any) {
+        return { 
+          success: false, 
+          error: `Failed to sync student: ${syncError.message}` 
+        };
+      }
+    } else {
+      studentId = student.id;
+    }
+
+    // STEP 4: Get job from Supabase using Firebase job ID
+    let jobId: string | null = null;
+
+    const { data: job, error: jobError } = await supabaseAdmin
+      .from("platform_jobs")
+      .select("id")
+      .eq("firebase_id", firebaseApp.jobId)
+      .maybeSingle(); // Use maybeSingle instead of single
+
+    if (jobError || !job) {
+      console.error(`Job not found in Supabase for Firebase job ID: ${firebaseApp.jobId}`);
+      
+      // Try to sync job from Firebase to Supabase
+      try {
+        const jobSyncResult = await syncJobToSupabase(firebaseApp.jobId);
+        if (!jobSyncResult.success) {
+          return { 
+            success: false, 
+            error: `Job with Firebase ID ${firebaseApp.jobId} not found in Supabase. Please ensure job is synced.` 
+          };
+        }
+        jobId = jobSyncResult.jobId!;
+      } catch (syncError: any) {
+        return { 
+          success: false, 
+          error: `Failed to sync job: ${syncError.message}` 
+        };
+      }
+    } else {
+      jobId = job.id;
+    }
+
+    // STEP 5: Create or get application in Supabase
+    let supabaseApplicationId = firebaseApp?.supabaseId;
+    
+    if (!supabaseApplicationId) {
+      // Check if application already exists in Supabase with this combination
+      const { data: existingApp } = await supabaseAdmin
+        .from("applications")
+        .select("id")
+        .eq("student_id", studentId)
+        .eq("job_id", jobId)
+        .maybeSingle();
+
+      if (existingApp) {
+        supabaseApplicationId = existingApp.id;
+        console.log(`[Interview Invitation] Found existing application in Supabase: ${supabaseApplicationId}`);
+      } else {
+        // Create new application in Supabase with REAL IDs
+        supabaseApplicationId = randomUUID(); // Use randomUUID for the application record itself
+        
         const { error: appError } = await supabaseAdmin
           .from("applications")
           .insert({
             id: supabaseApplicationId,
-            student_id: randomUUID(), // Placeholder - would need proper student sync
-            job_id: randomUUID(), // Placeholder - would need proper job sync
-            status: "pending",
-            matching_skills: [],
-            missing_skills: [],
-            applied_at: new Date().toISOString(),
+            student_id: studentId, // Use REAL student ID from Supabase
+            job_id: jobId, // Use REAL job ID from Supabase
+            status: firebaseApp?.status || "pending",
+            skill_match_score: firebaseApp?.skillMatchScore || 0,
+            matching_skills: firebaseApp?.matchingSkills || [],
+            missing_skills: firebaseApp?.missingSkills || [],
+            cover_letter: firebaseApp?.coverLetter || null,
+            resume_url: firebaseApp?.resumeUrl || null,
+            applied_at: firebaseApp?.createdAt || new Date().toISOString(),
           });
 
-        if (appError && appError.code !== '23505') { // 23505 = duplicate key
+        if (appError) {
           console.error("Supabase app creation error:", appError);
-        } else {
-          console.log(`[Interview Invitation] Created application in Supabase`);
-          
-          // Update Firebase application with Supabase ID mapping
-          if (firebaseApp) {
-            await adminDb().collection("applications").doc(applicationId).update({
-              supabaseId: supabaseApplicationId
-            });
-            console.log(`[Interview Invitation] Updated Firebase with Supabase mapping`);
-          }
+          throw appError;
         }
-      } catch (syncError) {
-        console.error("Application sync error:", syncError);
+
+        console.log(`[Interview Invitation] Created application in Supabase: ${supabaseApplicationId}`);
       }
+
+      // Update Firebase with Supabase ID
+      await adminDb().collection("applications").doc(applicationId).update({
+        supabaseId: supabaseApplicationId
+      });
+      console.log(`[Interview Invitation] Updated Firebase with Supabase mapping`);
     }
 
-    // STEP 4: Check if invitation already exists
-    const { data: existing } = await supabaseAdmin
+    // STEP 6: Check if invitation already exists
+    const { data: existingInvite } = await supabaseAdmin
       .from("interview_invitations")
       .select("id")
-    //   .eq("application_id", applicationId)
-      .eq("application_id", existingSupabaseId)
-      .single();
+      .eq("application_id", supabaseApplicationId)
+      .maybeSingle();
 
-    if (existing) {
+    if (existingInvite) {
       return { success: false, error: "Interview invitation already sent for this application" };
     }
 
-    // Create invitation
-     // STEP 5: Create invitation with the Supabase UUID
+    // STEP 7: Create interview invitation
+    const invitationId = randomUUID();
     const { data, error } = await supabaseAdmin
       .from("interview_invitations")
       .insert({
-        // application_id: applicationId,
-          application_id: existingSupabaseId,
+        id: invitationId,
+        application_id: supabaseApplicationId,
         meeting_url: meetingUrl,
         scheduled_date: scheduledDate,
         interviewer_name: interviewerName,
@@ -120,30 +197,30 @@ export async function createInterviewInvitation(params: {
         status: "pending",
         email_sent: false,
         student_confirmed: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single();
 
-     if (error) {
+    if (error) {
       console.error("Create invitation error:", error);
       throw error;
     }
 
     console.log(`[Interview Invitation] Successfully created invitation: ${data.id}`);
 
-    // STEP 6: Update application status in Supabase
+    // STEP 8: Update application status in Supabase
     await supabaseAdmin
       .from("applications")
       .update({ status: "interview_scheduled" })
-        .eq("id", existingSupabaseId);
+      .eq("id", supabaseApplicationId);
 
-    // STEP 7: Update application status in Firebase
-    if (firebaseApp) {
-      await adminDb().collection("applications").doc(applicationId).update({
-        status: "interview_scheduled",
-        interviewStatus: "scheduled"
-      });
-    }
+    // STEP 9: Update application status in Firebase
+    await adminDb().collection("applications").doc(applicationId).update({
+      status: "interview_scheduled",
+      interviewStatus: "scheduled"
+    });
 
     return { success: true, invitationId: data.id };
   } catch (error: any) {
@@ -152,6 +229,132 @@ export async function createInterviewInvitation(params: {
   }
 }
 
+// Helper function to sync student to Supabase
+async function syncStudentToSupabase(firebaseUid: string): Promise<{ success: boolean; studentId?: string; error?: string }> {
+  try {
+    // Check if student already exists
+    const { data: existing } = await supabaseAdmin
+      .from("students_profile")
+      .select("id")
+      .eq("firebase_uid", firebaseUid)
+      .maybeSingle();
+
+    if (existing) {
+      return { success: true, studentId: existing.id };
+    }
+
+    // Get student data from Firebase
+    const studentDoc = await adminDb().collection("students_profile").doc(firebaseUid).get();
+    if (!studentDoc.exists) {
+      return { success: false, error: "Student not found in Firebase" };
+    }
+
+    const studentData = studentDoc.data();
+
+    // Create student in Supabase
+    const { data: newStudent, error } = await supabaseAdmin
+      .from("students_profile")
+      .insert({
+        firebase_uid: firebaseUid,
+        full_name: studentData.full_name || "",
+        email: studentData.email || "",
+        phone: studentData.phone || "",
+        profile_picture_url: studentData.profile_picture_url || "",
+        college: studentData.college || "",
+        university: studentData.university || "",
+        degree: studentData.degree || "",
+        specialization: studentData.specialization || "",
+        graduation_year: studentData.graduation_year || null,
+        skills: studentData.skills || [],
+        experience_level: studentData.experience_level || null,
+        years_of_experience: studentData.years_of_experience || 0,
+        resume_url: studentData.resume_url || "",
+        bio: studentData.bio || "",
+        profile_completed: studentData.profile_completed || false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return { success: true, studentId: newStudent.id };
+  } catch (error: any) {
+    console.error("Sync student error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Helper function to sync job to Supabase
+async function syncJobToSupabase(firebaseJobId: string): Promise<{ success: boolean; jobId?: string; error?: string }> {
+  try {
+    // Check if job already exists
+    const { data: existing } = await supabaseAdmin
+      .from("platform_jobs")
+      .select("id")
+      .eq("firebase_id", firebaseJobId)
+      .maybeSingle();
+
+    if (existing) {
+      return { success: true, jobId: existing.id };
+    }
+
+    // Get job from Firebase
+    const jobDoc = await adminDb().collection("jobs").doc(firebaseJobId).get();
+    if (!jobDoc.exists) {
+      return { success: false, error: "Job not found in Firebase" };
+    }
+
+    const jobData = jobDoc.data();
+
+    // Get recruiter from Supabase
+    const { data: recruiter } = await supabaseAdmin
+      .from("recruiters")
+      .select("id")
+      .eq("firebase_uid", jobData.recruiterId)
+      .single();
+
+    if (!recruiter) {
+      return { success: false, error: "Recruiter not found in Supabase" };
+    }
+
+    // Create job in Supabase
+    const { data: newJob, error } = await supabaseAdmin
+      .from("platform_jobs")
+      .insert({
+        firebase_id: firebaseJobId,
+        recruiter_id: recruiter.id,
+        job_title: jobData.title,
+        job_description: jobData.description,
+        required_skills: jobData.requiredSkills || [],
+        experience_required: jobData.experienceRequired || 0,
+        salary_min: jobData.salaryMin || null,
+        salary_max: jobData.salaryMax || null,
+        currency: jobData.currency || "INR",
+        is_paid: jobData.isPaid !== false,
+        job_type: jobData.type || "full-time",
+        internship_duration_months: jobData.internshipDuration || null,
+        work_mode: jobData.workMode || "remote",
+        location: jobData.location || "",
+        status: jobData.status || "open",
+        openings: jobData.openings || 1,
+        application_deadline: jobData.deadline || null,
+        perks: jobData.perks || [],
+        created_at: jobData.createdAt || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return { success: true, jobId: newJob.id };
+  } catch (error: any) {
+    console.error("Sync job error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ... rest of your functions remain the same ...
 export async function getInterviewInvitation(
   invitationId: string
 ): Promise<{ success: boolean; invitation?: any; error?: string }> {
