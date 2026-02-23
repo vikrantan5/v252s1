@@ -7,6 +7,8 @@ import { getJobById } from "@/lib/actions/job.action";
 import { getUserById } from "@/lib/actions/auth.action";
 import { createApplication, checkExistingApplication } from "@/lib/actions/application.action";
 import { createInterview } from "@/lib/actions/interview.action";
+import { getStudentProfile, checkProfileCompletion } from "@/lib/actions/profile.action";
+import { calculateSkillMatch } from "@/lib/utils/skillMatch";
 import { Job } from "@/types";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -20,9 +22,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Briefcase, MapPin, DollarSign, Clock, Building2, Award } from "lucide-react";
+// import { Briefcase, MapPin, DollarSign, Clock, Building2, Award } from "lucide-react";/
+import { Briefcase, MapPin, DollarSign, Clock, Building2, Award, AlertCircle, Target, CheckCircle2 } from "lucide-react";
 import { formatSalary, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import Link from "next/link";
 
 export default function JobDetailsPage() {
   const router = useRouter();
@@ -36,6 +40,13 @@ export default function JobDetailsPage() {
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [applicationId, setApplicationId] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
+    const [profileCompleted, setProfileCompleted] = useState(false);
+  const [missingFields, setMissingFields] = useState<string[]>([]);
+  const [skillMatch, setSkillMatch] = useState<{
+    matchScore: number;
+    matchingSkills: string[];
+    missingSkills: string[];
+  } | null>(null);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -57,12 +68,37 @@ export default function JobDetailsPage() {
       // Check if user already applied
       const alreadyApplied = await checkExistingApplication(userId, jobId);
       setHasApplied(alreadyApplied);
+      
+      // Check profile completion
+      const profileCheck = await checkProfileCompletion(userId);
+      setProfileCompleted(profileCheck.completed);
+      if (!profileCheck.completed) {
+        setMissingFields(profileCheck.missingFields || []);
+      }
+
+      // Calculate skill match if profile exists
+      if (profileCheck.completed) {
+        const profileResult = await getStudentProfile(userId);
+        if (profileResult.success && profileResult.profile) {
+          const match = calculateSkillMatch(
+            profileResult.profile.skills || [],
+            jobData.techStack || []
+          );
+          setSkillMatch(match);
+        }
+      }
     }
     setLoading(false);
   };
 
   const handleApply = async () => {
     if (!currentUserId || !job) return;
+      // Check profile completion first
+    if (!profileCompleted) {
+      toast.error("Please complete your profile before applying to jobs");
+      router.push("/jobseeker/profile");
+      return;
+    }
 
     setApplying(true);
     try {
@@ -174,6 +210,81 @@ export default function JobDetailsPage() {
       <Navbar />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Profile Completion Warning */}
+        {!profileCompleted && (
+          <Card className="mb-6 border-orange-300 bg-orange-50">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-orange-900 mb-1">Complete Your Profile to Apply</h3>
+                  <p className="text-sm text-orange-800 mb-3">
+                    You need to complete your profile before applying to jobs. Missing fields: {missingFields.join(", ")}
+                  </p>
+                  <Link href="/jobseeker/profile">
+                    <Button size="sm" variant="default">
+                      Complete Profile Now
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Skill Match Card */}
+        {skillMatch && profileCompleted && (
+          <Card className="mb-6 border-blue-200 bg-blue-50">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <Target className="h-6 w-6 text-blue-600" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="font-semibold text-blue-900">Your Skills Match</h3>
+                    <Badge className={`${
+                      skillMatch.matchScore >= 80 ? "bg-green-600" :
+                      skillMatch.matchScore >= 60 ? "bg-blue-600" :
+                      skillMatch.matchScore >= 40 ? "bg-yellow-600" :
+                      "bg-gray-600"
+                    } text-white text-lg px-3 py-1`}>
+                      {skillMatch.matchScore}%
+                    </Badge>
+                  </div>
+                  
+                  {skillMatch.matchingSkills.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-sm font-medium text-green-700 mb-1">
+                        ✓ Matching Skills ({skillMatch.matchingSkills.length}):
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {skillMatch.matchingSkills.map((skill, idx) => (
+                          <Badge key={idx} variant="outline" className="border-green-500 bg-green-100 text-green-700 text-xs">
+                            ✓ {skill}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {skillMatch.missingSkills.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-orange-700 mb-1">
+                        Skills to Learn ({skillMatch.missingSkills.length}):
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {skillMatch.missingSkills.map((skill, idx) => (
+                          <Badge key={idx} variant="outline" className="border-orange-400 bg-orange-100 text-orange-700 text-xs">
+                            {skill}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         {/* Header */}
         <Card className="mb-6">
           <CardHeader>
@@ -211,6 +322,19 @@ export default function JobDetailsPage() {
           </CardHeader>
 
           <CardContent>
+             {!profileCompleted ? (
+              <Link href="/jobseeker/profile">
+                <Button
+                  className="w-full"
+                  size="lg"
+                  variant="outline"
+                  data-testid="complete-profile-button"
+                >
+                  <AlertCircle className="mr-2 h-5 w-5" />
+                  Complete Profile to Apply
+                </Button>
+              </Link>
+            ) : (
             <Button
               onClick={handleApply}
               disabled={applying || hasApplied || job.status === "closed"}
@@ -226,6 +350,8 @@ export default function JobDetailsPage() {
                 ? "Job Closed"
                 : "Apply Now"}
             </Button>
+
+              )}
           </CardContent>
         </Card>
 

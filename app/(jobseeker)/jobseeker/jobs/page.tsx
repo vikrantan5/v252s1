@@ -3,38 +3,59 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase/client";
 import { getAllJobsMerged } from "@/lib/actions/job.action";
+import { getStudentProfile } from "@/lib/actions/profile.action";
+import { calculateSkillMatch } from "@/lib/utils/skillMatch";
 import { Job } from "@/types";
 import Navbar from "@/components/Navbar";
 import JobCard from "@/components/JobCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Filter, RefreshCw } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Search, Filter, RefreshCw, Target, TrendingUp, Badge } from "lucide-react";
 import { toast } from "sonner";
+
+interface JobWithMatch extends Job {
+  skillMatchScore?: number;
+  matchingSkills?: string[];
+  missingSkills?: string[];
+}
 
 export default function BrowseJobsPage() {
   const router = useRouter();
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<JobWithMatch[]>([]);
+  const [filteredJobs, setFilteredJobs] = useState<JobWithMatch[]>([]);
+  const [recommendedJobs, setRecommendedJobs] = useState<JobWithMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "recruiter" | "external">("all");
   const [scraping, setScraping] = useState(false);
+  const [studentSkills, setStudentSkills] = useState<string[]>([]);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (!user) {
         router.push("/sign-in");
+      } else {
+        // Load student profile to get skills
+        const profileResult = await getStudentProfile(user.uid);
+        if (profileResult.success && profileResult.profile) {
+          setStudentSkills(profileResult.profile.skills || []);
+        }
       }
     });
     return () => unsubscribe();
   }, [router]);
 
   useEffect(() => {
-    loadJobs();
-  }, []);
+    if (studentSkills.length > 0) {
+      loadJobs();
+    } else {
+      loadJobs();
+    }
+  }, [studentSkills]);
 
   useEffect(() => {
     filterJobs();
@@ -43,7 +64,31 @@ export default function BrowseJobsPage() {
   const loadJobs = async () => {
     setLoading(true);
     const allJobs = await getAllJobsMerged();
-    setJobs(allJobs);
+     
+    // Calculate skill match for each job if student has skills
+    const jobsWithMatch: JobWithMatch[] = allJobs.map(job => {
+      if (studentSkills.length > 0 && job.techStack && job.techStack.length > 0) {
+        const match = calculateSkillMatch(studentSkills, job.techStack);
+        return {
+          ...job,
+          skillMatchScore: match.matchScore,
+          matchingSkills: match.matchingSkills,
+          missingSkills: match.missingSkills,
+        };
+      }
+      return job;
+    });
+
+    setJobs(jobsWithMatch);
+
+    // Get recommended jobs (top matches)
+    if (studentSkills.length > 0) {
+      const recommended = jobsWithMatch
+        .filter(j => j.skillMatchScore && j.skillMatchScore > 0)
+        .sort((a, b) => (b.skillMatchScore || 0) - (a.skillMatchScore || 0))
+        .slice(0, 6);
+      setRecommendedJobs(recommended);
+    }
     setLoading(false);
   };
 
@@ -158,6 +203,37 @@ export default function BrowseJobsPage() {
             </div>
           </div>
         </div>
+           {/* Recommended Jobs Section */}
+        {recommendedJobs.length > 0 && (
+          <Card className="mb-8 border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Target className="h-6 w-6 text-blue-600" />
+                <CardTitle className="text-xl">Recommended for You</CardTitle>
+                <Badge className="bg-blue-600 text-white">
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  Top Matches
+                </Badge>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Jobs that match your skills profile
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {recommendedJobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    skillMatchScore={job.skillMatchScore}
+                    matchingSkills={job.matchingSkills}
+                    missingSkills={job.missingSkills}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
@@ -234,7 +310,13 @@ export default function BrowseJobsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredJobs.map((job) => (
-              <JobCard key={job.id} job={job} />
+             <JobCard
+                key={job.id}
+                job={job}
+                skillMatchScore={job.skillMatchScore}
+                matchingSkills={job.matchingSkills}
+                missingSkills={job.missingSkills}
+              />
             ))}
           </div>
         )}

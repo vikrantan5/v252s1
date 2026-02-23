@@ -98,7 +98,11 @@ export default function StudentProfilePage() {
 
       // Check completion status
       const status = await checkProfileCompletion(uid);
-      setCompletionStatus(status);
+    //   setCompletionStatus(status);
+    setCompletionStatus({
+  completed: status.completed,
+  missingFields: status.missingFields || [], // Ensure it's always an array
+});
     } catch (error) {
       console.error("Load profile error:", error);
     } finally {
@@ -118,7 +122,10 @@ export default function StudentProfilePage() {
         
         // Re-check completion status
         const status = await checkProfileCompletion(userId);
-        setCompletionStatus(status);
+setCompletionStatus({
+  completed: status.completed,
+  missingFields: status.missingFields || [],
+});
         
         // If profile is now complete, redirect to dashboard
         if (status.completed) {

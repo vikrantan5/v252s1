@@ -1,7 +1,7 @@
-"/**
- * Skill Matching Utility
- * Calculates match percentage between student skills and job requirements
- */
+// "/**
+//  * Skill Matching Utility
+//  * Calculates match percentage between student skills and job requirements
+//  */
 
 export interface SkillMatchResult {
   matchScore: number; // 0-100
@@ -58,20 +58,20 @@ export function calculateSkillMatch(
  * Get match score badge color based on percentage
  */
 export function getMatchScoreColor(score: number): string {
-  if (score >= 80) return \"bg-green-500\";
-  if (score >= 60) return \"bg-blue-500\";
-  if (score >= 40) return \"bg-yellow-500\";
-  return \"bg-red-500\";
+  if (score >= 80) return "bg-green-500";
+  if (score >= 60) return "bg-blue-500";
+  if (score >= 40) return "bg-yellow-500";
+  return "bg-red-500";
 }
 
 /**
  * Get match score text based on percentage
  */
 export function getMatchScoreText(score: number): string {
-  if (score >= 80) return \"Excellent Match\";
-  if (score >= 60) return \"Good Match\";
-  if (score >= 40) return \"Fair Match\";
-  return \"Low Match\";
+  if (score >= 80) return "Excellent Match";
+  if (score >= 60) return "Good Match";
+  if (score >= 40) return "Fair Match";
+  return "Low Match";
 }
 
 /**
@@ -96,4 +96,3 @@ export function filterJobsByMinMatch<T extends { skill_match_score?: number }>(
 ): T[] {
   return jobs.filter(job => (job.skill_match_score || 0) >= minScore);
 }
-"

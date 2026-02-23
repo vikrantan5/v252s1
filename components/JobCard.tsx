@@ -3,18 +3,33 @@ import { Job } from "@/types";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Briefcase, MapPin, DollarSign, Clock, Building2, ExternalLink, Globe } from "lucide-react";
+// import { Briefcase, MapPin, DollarSign, Clock, Building2, ExternalLink, Globe } from "lucide-react";
+import { Briefcase, MapPin, DollarSign, Clock, Building2, ExternalLink, Globe, Target } from "lucide-react";
 import { formatSalary, formatDate } from "@/lib/utils";
 
 interface JobCardProps {
   job: Job;
   showActions?: boolean;
   actionButton?: React.ReactNode;
+  skillMatchScore?: number;
+  matchingSkills?: string[];
+  missingSkills?: string[];
 }
 
-export default function JobCard({ job, showActions = true, actionButton }: JobCardProps) {
+export default function JobCard({ job, showActions = true, actionButton, skillMatchScore, matchingSkills, missingSkills }: JobCardProps) {
     const isExternal = job.source === "external";
   const displayCompany = isExternal ? job.externalCompany : job.companyName;
+  
+  // Determine skill match badge color and text
+  const getMatchBadge = (score: number) => {
+    if (score >= 80) return { color: "bg-green-600", text: "Excellent Match", icon: "🎯" };
+    if (score >= 60) return { color: "bg-blue-600", text: "Good Match", icon: "✨" };
+    if (score >= 40) return { color: "bg-yellow-600", text: "Fair Match", icon: "⚡" };
+    return { color: "bg-gray-600", text: "Low Match", icon: "📋" };
+  };
+
+  const matchBadge = skillMatchScore !== undefined ? getMatchBadge(skillMatchScore) : null;
+
   return (
     <Card className="hover:shadow-md transition-shadow" data-testid={`job-card-${job.id}`}>
       <CardHeader>
@@ -34,7 +49,7 @@ export default function JobCard({ job, showActions = true, actionButton }: JobCa
               </h3>
             </Link>
             )}
-            <div className="flex items-center gap-3 mt-2 text-sm">
+            <div className="flex items-center gap-3 mt-2 text-sm flex-wrap">
               <div className="flex items-center gap-2 text-gray-600">
               <Building2 className="h-4 w-4" />
                <span>{displayCompany || "Company"}</span>
@@ -48,6 +63,12 @@ export default function JobCard({ job, showActions = true, actionButton }: JobCa
               {!isExternal && (
                 <Badge variant="default" className="bg-green-600" data-testid="recruiter-badge">
                   Recruiter
+                </Badge>
+              )}
+              {matchBadge && (
+                <Badge className={`${matchBadge.color} text-white flex items-center gap-1`} data-testid="skill-match-badge">
+                  <Target className="h-3 w-3" />
+                  {matchBadge.icon} {skillMatchScore}% {matchBadge.text}
                 </Badge>
               )}
             </div>
@@ -84,16 +105,35 @@ export default function JobCard({ job, showActions = true, actionButton }: JobCa
            )}
         </div>
 
-        {job.techStack && job.techStack.length > 0 && (
+                {job.techStack && job.techStack.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {job.techStack.slice(0, 5).map((tech, idx) => (
-              <Badge key={idx} variant="outline">
-                {tech}
-              </Badge>
-            ))}
+            {job.techStack.slice(0, 5).map((tech, idx) => {
+              const isMatching = matchingSkills?.includes(tech);
+              const isMissing = missingSkills?.includes(tech);
+              return (
+                <Badge 
+                  key={idx} 
+                  variant="outline"
+                  className={
+                    isMatching ? "border-green-500 bg-green-50 text-green-700" :
+                    isMissing ? "border-orange-400 bg-orange-50 text-orange-700" :
+                    ""
+                  }
+                >
+                  {isMatching && "✓ "}{tech}
+                </Badge>
+              );
+            })}
             {job.techStack.length > 5 && (
               <Badge variant="outline">+{job.techStack.length - 5} more</Badge>
             )}
+          </div>
+        )}
+
+        {matchingSkills && matchingSkills.length > 0 && (
+          <div className="text-xs text-green-600 mt-2">
+            ✓ You have: {matchingSkills.slice(0, 3).join(", ")}
+            {matchingSkills.length > 3 && ` +${matchingSkills.length - 3} more`}
           </div>
         )}
 

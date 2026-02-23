@@ -1,4 +1,4 @@
-""use server";
+"use server";
 
 import { supabaseAdmin } from "@/lib/supabase";
 import type { PlatformJob, JobApplication, StudentProfile } from "@/lib/supabase";
@@ -433,4 +433,3 @@ export async function updateApplicationStatus(
     return { success: false, error: error.message };
   }
 }
-"
