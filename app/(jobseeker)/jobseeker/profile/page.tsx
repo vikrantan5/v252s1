@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Plus, X, Upload, CheckCircle2 } from "lucide-react";
+import { Loader2, Plus, X, Upload, CheckCircle2, ArrowLeft } from "lucide-react";
 
 const SKILLS_OPTIONS = [
   "React", "Next.js", "Vue.js", "Angular", "Svelte",
@@ -259,8 +259,21 @@ setCompletionStatus({
     <div className="container max-w-4xl mx-auto py-8 px-4">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2" data-testid="profile-page-title">Complete Your Profile</h1>
-        <p className="text-muted-foreground">
+         <div className="flex items-center gap-4 mb-4">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => router.back()}
+            data-testid="back-button"
+            className="shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="profile-page-title">Complete Your Profile</h1>
+          </div>
+        </div>
+        <p className="text-muted-foreground ml-14">
           Fill out your profile to start applying for jobs
         </p>
         

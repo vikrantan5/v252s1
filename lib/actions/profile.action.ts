@@ -71,9 +71,14 @@ export async function getStudentProfile(
       .from("students_profile")
       .select("*")
       .eq("firebase_uid", firebaseUid)
-      .single();
+    .maybeSingle();
 
     if (error) throw error;
+    
+    // If no profile exists, return success with undefined profile
+    if (!data) {
+      return { success: true, profile: undefined };
+    }
 
     return { success: true, profile: data as StudentProfile };
   } catch (error: any) {
@@ -87,17 +92,40 @@ export async function updateStudentProfile(
   updates: Partial<StudentProfile>
 ): Promise<{ success: boolean; error?: string }> {
   try {
+     // Check if profile exists first
+    const { data: existingProfile } = await supabaseAdmin
+      .from("students_profile")
+      .select("*")
+      .eq("firebase_uid", firebaseUid)
+      .maybeSingle();
+
+    // If no profile exists, create one
+    if (!existingProfile) {
+      const { error: insertError } = await supabaseAdmin
+        .from("students_profile")
+        .insert({
+          firebase_uid: firebaseUid,
+          full_name: updates.full_name || "",
+          email: updates.email || "",
+          phone: updates.phone || null,
+          skills: updates.skills || [],
+          projects: updates.projects || [],
+          portfolio_links: updates.portfolio_links || [],
+          preferred_job_roles: updates.preferred_job_roles || [],
+          preferred_locations: updates.preferred_locations || [],
+          preferred_job_types: updates.preferred_job_types || [],
+          profile_completed: false,
+          years_of_experience: updates.years_of_experience || 0,
+          ...updates,
+        });
+
+      if (insertError) throw insertError;
+      return { success: true };
+    }
+
     // Check if profile should be marked as completed
     if (updates.profile_completed === undefined) {
-      // Auto-check if essential fields are filled
-      const { data: currentProfile } = await supabaseAdmin
-        .from("students_profile")
-        .select("*")
-        .eq("firebase_uid", firebaseUid)
-        .single();
-
-      if (currentProfile) {
-        const merged = { ...currentProfile, ...updates };
+      const merged = { ...existingProfile, ...updates };
         const isComplete = Boolean(
           merged.full_name &&
           merged.email &&
@@ -112,7 +140,7 @@ export async function updateStudentProfile(
         
         if (isComplete) {
           updates.profile_completed = true;
-        }
+        
       }
     }
 
@@ -138,10 +166,15 @@ export async function checkProfileCompletion(
       .from("students_profile")
       .select("*")
       .eq("firebase_uid", firebaseUid)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
-      return { completed: false, missingFields: ["Profile not found"] };
+     if (error) {
+      console.error("Check profile completion error:", error);
+      return { completed: false, missingFields: ["Error checking profile"] };
+    }
+
+    if (!data) {
+      return { completed: false, missingFields: ["Profile not created"] };
     }
 
     const profile = data as StudentProfile;
