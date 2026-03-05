@@ -317,10 +317,13 @@ export default function ResumeBuilderPage() {
         return;
       }
 
+      // Capture full element with scroll height
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
+        windowHeight: element.scrollHeight,
+        height: element.scrollHeight,
       });
 
       const imgData = canvas.toDataURL("image/png");
@@ -330,33 +333,192 @@ export default function ResumeBuilderPage() {
         format: "a4",
       });
 
-      const imgWidth = 210;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      // A4 dimensions in mm
+      const pdfWidth = 210;
+      const pdfHeight = 297;
       
-      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+      // Calculate image dimensions
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      // Calculate how many pages needed
+      const totalPages = Math.ceil(imgHeight / pdfHeight);
+      
+      // Add pages
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) {
+          pdf.addPage();
+        }
+        
+        const yOffset = -(i * pdfHeight);
+        pdf.addImage(imgData, "PNG", 0, yOffset, imgWidth, imgHeight);
+      }
+      
       pdf.save(`${personalInfo.fullName || "resume"}.pdf`);
       toast.success("PDF downloaded!");
     } else {
       // DOCX generation
-      const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
       
-      const doc = new Document({
-        sections: [{
-          children: [
-            new Paragraph({
-              text: personalInfo.fullName,
-              heading: HeadingLevel.HEADING_1,
-            }),
+      const docChildren: any[] = [];
+      
+      // Personal Info
+      docChildren.push(
+        new Paragraph({
+          text: personalInfo.fullName,
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+        })
+      );
+      
+      if (personalInfo.title) {
+        docChildren.push(
+          new Paragraph({
+            text: personalInfo.title,
+            alignment: AlignmentType.CENTER,
+          })
+        );
+      }
+      
+      // Contact Info
+      const contactInfo = [
+        personalInfo.email,
+        personalInfo.phone,
+        personalInfo.location,
+        personalInfo.linkedin,
+        personalInfo.github,
+        personalInfo.portfolio
+      ].filter(Boolean).join(" | ");
+      
+      docChildren.push(
+        new Paragraph({
+          text: contactInfo,
+          alignment: AlignmentType.CENTER,
+        }),
+        new Paragraph({ text: "" }) // Spacing
+      );
+      
+      // Summary
+      if (summary) {
+        docChildren.push(
+          new Paragraph({
+            text: "PROFESSIONAL SUMMARY",
+            heading: HeadingLevel.HEADING_2,
+          }),
+          new Paragraph({ text: summary }),
+          new Paragraph({ text: "" })
+        );
+      }
+      
+      // Experience
+      if (experience.length > 0 && experience[0].title) {
+        docChildren.push(
+          new Paragraph({
+            text: "WORK EXPERIENCE",
+            heading: HeadingLevel.HEADING_2,
+          })
+        );
+        
+        experience.forEach(exp => {
+          docChildren.push(
             new Paragraph({
               children: [
-                new TextRun(`${personalInfo.email} | ${personalInfo.phone}`),
+                new TextRun({ text: exp.title, bold: true }),
+                new TextRun(` - ${exp.company}`),
               ],
             }),
             new Paragraph({
-              text: summary,
+              text: `${exp.startDate} - ${exp.current ? "Present" : exp.endDate}`,
+            })
+          );
+          
+          exp.responsibilities.forEach(resp => {
+            if (resp) {
+              docChildren.push(
+                new Paragraph({
+                  text: `• ${resp}`,
+                })
+              );
+            }
+          });
+          
+          docChildren.push(new Paragraph({ text: "" }));
+        });
+      }
+      
+      // Education
+      if (education.length > 0 && education[0].degree) {
+        docChildren.push(
+          new Paragraph({
+            text: "EDUCATION",
+            heading: HeadingLevel.HEADING_2,
+          })
+        );
+        
+        education.forEach(edu => {
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: edu.degree, bold: true }),
+              ],
             }),
-            // Add more sections as needed
-          ],
+            new Paragraph({
+              text: `${edu.institution} - ${edu.startDate} to ${edu.endDate}`,
+            }),
+            new Paragraph({ text: "" })
+          );
+        });
+      }
+      
+      // Skills
+      const allSkills = [
+        ...(skills.technical || []),
+        ...(skills.soft || []),
+        ...(skills.tools || []),
+        ...(skills.frameworks || []),
+        ...(skills.languages || [])
+      ].filter(Boolean);
+      
+      if (allSkills.length > 0) {
+        docChildren.push(
+          new Paragraph({
+            text: "SKILLS",
+            heading: HeadingLevel.HEADING_2,
+          }),
+          new Paragraph({
+            text: allSkills.join(", "),
+          }),
+          new Paragraph({ text: "" })
+        );
+      }
+      
+      // Projects
+      if (projects.length > 0 && projects[0].title) {
+        docChildren.push(
+          new Paragraph({
+            text: "PROJECTS",
+            heading: HeadingLevel.HEADING_2,
+          })
+        );
+        
+        projects.forEach(proj => {
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: proj.title, bold: true }),
+              ],
+            }),
+            new Paragraph({
+              text: proj.description,
+            }),
+            new Paragraph({ text: "" })
+          );
+        });
+      }
+
+      const doc = new Document({
+        sections: [{
+          children: docChildren,
         }],
       });
 
@@ -369,7 +531,6 @@ export default function ResumeBuilderPage() {
       toast.success("DOCX downloaded!");
     }
   };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
@@ -399,8 +560,11 @@ export default function ResumeBuilderPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Form */}
+          {/* Left Column - Live Preview (wider area) */}
           <div className="lg:col-span-2 space-y-6">
+
+
+
             <Tabs defaultValue="personal" className="w-full">
               <TabsList className="grid grid-cols-4 lg:grid-cols-8 gap-2">
                 <TabsTrigger value="personal">Personal</TabsTrigger>
@@ -743,30 +907,34 @@ export default function ResumeBuilderPage() {
                               </div>
                             ))}
                             <Button
-                              onClick={() => {
-                                const allResp = exp.responsibilities.join("");
-                                handleEnhanceText(allResp, "experience", (enhanced: string) => {
-                                  const points = enhanced.split("").filter(p => p.trim());
-                                  updateExperience(expIndex, "responsibilities", points);
-                                });
-                              }}
-                              disabled={enhancing === "experience"}
-                              variant="outline"
-                              size="sm"
-                              className="mt-2"
-                            >
-                              {enhancing === "experience" ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Enhancing...
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="mr-2 h-4 w-4" />
-                                  Enhance with AI
-                                </>
-                              )}
-                            </Button>
+  onClick={() => {
+    const allResp = exp.responsibilities.join("\n");
+    handleEnhanceText(allResp, "experience", (enhanced: string) => {
+      // Split by newlines or bullet points
+      const points = enhanced
+        .split(/\n|•/)
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+      updateExperience(expIndex, "responsibilities", points);
+    });
+  }}
+  disabled={enhancing === "experience"}
+  variant="outline"
+  size="sm"
+  className="mt-2"
+>
+  {enhancing === "experience" ? (
+    <>
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      Enhancing...
+    </>
+  ) : (
+    <>
+      <Sparkles className="mr-2 h-4 w-4" />
+      Enhance with AI
+    </>
+  )}
+</Button>
                           </div>
                         </div>
                       </div>
@@ -1110,6 +1278,45 @@ export default function ResumeBuilderPage() {
                 </div>
               </CardContent>
             </Card>
+
+
+
+                        {/* Live Preview (shown when toggle is on) */}
+            {showPreview && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Live Preview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div 
+                    className="bg-gray-100 p-6 rounded-lg overflow-auto"
+                    style={{ maxHeight: "800px" }}
+                  >
+                    <div
+                      id="resume-preview"
+                      className="bg-white shadow-2xl mx-auto"
+                      style={{ 
+                        width: "794px",
+                        minHeight: "1123px",
+                        padding: "20mm",
+                        boxSizing: "border-box"
+                      }}
+                    >
+                      <TemplateComponent
+                        personalInfo={personalInfo}
+                        summary={summary}
+                        education={education}
+                        experience={experience}
+                        skills={skills}
+                        projects={projects}
+                        certifications={certifications}
+                        achievements={achievements}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Right Column - Template Selector & Preview */}
@@ -1168,32 +1375,7 @@ export default function ResumeBuilderPage() {
               </CardContent>
             </Card>
 
-            {/* Live Preview (shown when toggle is on) */}
-            {showPreview && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Live Preview</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div
-                    id="resume-preview"
-                    className="bg-white border rounded-lg shadow-sm overflow-auto"
-                    style={{ maxHeight: "600px" }}
-                  >
-                    <TemplateComponent
-                      personalInfo={personalInfo}
-                      summary={summary}
-                      education={education}
-                      experience={experience}
-                      skills={skills}
-                      projects={projects}
-                      certifications={certifications}
-                      achievements={achievements}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+           
           </div>
         </div>
       </div>
