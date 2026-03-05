@@ -18,6 +18,7 @@ import {
   Menu,
   X,
   User,
+  FileEdit,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -105,6 +106,12 @@ export default function Navbar() {
                       <Button variant="ghost" size="sm" className="gap-2">
                         <FileCheck className="h-4 w-4" />
                         Resume Analyzer
+                      </Button>
+                    </Link>
+                    <Link href="/jobseeker/resume-builder">
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        <FileEdit className="h-4 w-4" />
+                        Resume Builder
                       </Button>
                     </Link>
                     <Link href="/mock-interview/setup">
@@ -207,6 +214,13 @@ export default function Navbar() {
                     <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
                       <FileCheck className="h-4 w-4" />
                       Resume Analyzer
+                    </Button>
+                  </Link>
+
+                   <Link href="/jobseeker/resume-builder" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
+                      <FileEdit className="h-4 w-4" />
+                      Resume Builder
                     </Button>
                   </Link>
                   <Link href="/mock-interview/setup" onClick={() => setMobileMenuOpen(false)}>

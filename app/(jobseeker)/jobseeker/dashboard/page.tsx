@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge"; // Add this import
 // import { Briefcase, FileText, Award, TrendingUp, Clock, Upload } from "lucide-react"; // Add Upload to imports
-import { Briefcase, FileText, Award, TrendingUp, Clock, Upload, Sparkles } from "lucide-react"
+import { Briefcase, FileText, Award, TrendingUp, Clock, Upload, Sparkles, FileEdit } from "lucide-react"
 
 export default function JobSeekerDashboard() {
   const router = useRouter();
@@ -202,7 +202,7 @@ export default function JobSeekerDashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-purple-600" />
-                  ATS Resume Checker
+                  ATS Resume Checker & Builder
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -248,6 +248,7 @@ export default function JobSeekerDashboard() {
                       <Link href="/jobseeker/resume" className="flex-1">
                         <Button className="w-full bg-purple-600 hover:bg-purple-700" size="sm">
                           <Upload className="h-4 w-4 mr-2" />
+                          
                           Analyze New
                         </Button>
                       </Link>
