@@ -572,19 +572,11 @@ export async function sendInterviewInvitationEmail(params: {
         })
       : "To be scheduled";
 
-    // Send email via Resend
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        // from: "HireAI Platform <noreply@hireai.com>",
-        from: "HireAI Platform <onboarding@resend.dev>",
-        to: [studentEmail],
-        subject: `🎉 Interview Invitation from ${companyName}`,
-        html: `
+ // Import SendGrid dynamically for server-side usage
+    const sgMail = require("@sendgrid/mail");
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+    const htmlContent = `
           <!DOCTYPE html>
           <html>
             <head>
@@ -662,14 +654,17 @@ export async function sendInterviewInvitationEmail(params: {
               </div>
             </body>
           </html>
-        `,
-      }),
-    });
+       `;
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Resend API error: ${errorData.message || response.statusText}`);
-    }
+    // Send email via SendGrid
+    const msg = {
+      to: studentEmail,
+      from: process.env.DEFAULT_FROM_EMAIL || "vikrantsingh.it2023@nsec.ac.in",
+      subject: `🎉 Interview Invitation from ${companyName}`,
+      html: htmlContent,
+    };
+
+    await sgMail.send(msg);
 
     // Mark email as sent
     await supabaseAdmin

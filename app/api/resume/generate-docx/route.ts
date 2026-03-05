@@ -202,42 +202,47 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Projects
-    if (projects && projects.length > 0) {
-      sections.push(
-        new Paragraph({
-          text: "PROJECTS",
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 200, after: 100 },
-        })
-      );
+  // Projects
+if (projects && projects.length > 0) {
+  sections.push(
+    new Paragraph({
+      text: "PROJECTS",
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 200, after: 100 },
+    })
+  );
 
-      projects.forEach((project) => {
-        sections.push(
-          new Paragraph({
+  projects.forEach((project) => {
+    // FIX THIS SECTION - use TextRun for bold text
+    sections.push(
+      new Paragraph({
+        children: [
+          new TextRun({
             text: project.title,
             bold: true,
-            spacing: { after: 50 },
-          })
-        );
+          }),
+        ],
+        spacing: { after: 50 },
+      })
+    );
 
-        sections.push(
-          new Paragraph({
-            text: project.description,
-            spacing: { after: 50 },
-          })
-        );
+    sections.push(
+      new Paragraph({
+        text: project.description,
+        spacing: { after: 50 },
+      })
+    );
 
-        if (project.technologies && project.technologies.length > 0) {
-          sections.push(
-            new Paragraph({
-              text: `Technologies: ${project.technologies.join(", ")}`,
-              spacing: { after: 100 },
-            })
-          );
-        }
-      });
+    if (project.technologies && project.technologies.length > 0) {
+      sections.push(
+        new Paragraph({
+          text: `Technologies: ${project.technologies.join(", ")}`,
+          spacing: { after: 100 },
+        })
+      );
     }
+  });
+}
 
     // Certifications
     if (certifications && certifications.length > 0) {
@@ -297,7 +302,7 @@ export async function POST(request: NextRequest) {
     const buffer = await Packer.toBuffer(doc);
 
     // Return DOCX as response
-    return new NextResponse(buffer, {
+   return new NextResponse(Buffer.from(buffer) as any, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": `attachment; filename="resume-${Date.now()}.docx"`,
