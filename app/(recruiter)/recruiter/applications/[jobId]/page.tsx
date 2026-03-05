@@ -8,14 +8,17 @@ import { getJobById } from "@/lib/actions/job.action";
 import { getApplicationsByJob, updateApplication } from "@/lib/actions/application.action";
 import { getFeedbackByApplicationId } from "@/lib/actions/interview.action";
 import { createInterviewInvitation, sendInterviewInvitationEmail } from "@/lib/actions/interview-invitation.action";
+import { getStudentProfile } from "@/lib/actions/profile.action";
 import { Application, Job, Feedback } from "@/types";
+import { StudentProfile } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
+import StudentProfileModal from "@/components/StudentProfileModal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, Calendar, Award, CheckCircle, XCircle , Video ,Clock} from "lucide-react";
+import { Mail, Calendar, Award, CheckCircle, XCircle , Video ,Clock, User} from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -43,6 +46,12 @@ export default function ViewApplicationsPage() {
     meetingUrl: "",
   });
   const [sendingInvite, setSendingInvite] = useState(false);
+
+
+  // Student profile modal state
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [selectedStudentProfile, setSelectedStudentProfile] = useState<StudentProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -90,6 +99,27 @@ export default function ViewApplicationsPage() {
       await loadData();
     } else {
       toast.error("Failed to update application");
+    }
+  };
+
+   const handleViewProfile = async (applicantId: string) => {
+    setLoadingProfile(true);
+    setShowProfileModal(true);
+    
+    try {
+      const result = await getStudentProfile(applicantId);
+      if (result.success && result.profile) {
+        setSelectedStudentProfile(result.profile);
+      } else {
+        toast.error("Failed to load student profile");
+        setShowProfileModal(false);
+      }
+    } catch (error) {
+      console.error("Error loading profile:", error);
+      toast.error("Error loading profile");
+      setShowProfileModal(false);
+    } finally {
+      setLoadingProfile(false);
     }
   };
 
@@ -268,6 +298,16 @@ const handleSendInvitation = async () => {
                                 <Calendar className="h-4 w-4" />
                                 <span>Applied {formatDate(app.createdAt)}</span>
                               </div>
+                              <Button
+                                size="sm"
+                                variant="link"
+                                className="mt-2 p-0 h-auto text-purple-600 hover:text-purple-700 flex items-center gap-1"
+                                onClick={() => handleViewProfile(app.applicantId)}
+                                data-testid={`view-profile-${app.id}`}
+                              >
+                                <User className="h-4 w-4" />
+                                View Full Profile
+                              </Button>
                             </div>
 
                             <div className="flex flex-col items-end gap-2">
@@ -555,6 +595,15 @@ const handleSendInvitation = async () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+
+           {/* Student Profile Modal */}
+        <StudentProfileModal
+          open={showProfileModal}
+          onOpenChange={setShowProfileModal}
+          profile={selectedStudentProfile}
+          loading={loadingProfile}
+        />
       </div>
     </div>
   );
