@@ -29,7 +29,7 @@ export default function UserWebcam({
   const [error, setError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
-  const startCamera = async () => {
+    const startCamera = async () => {
     setLoading(true);
     setError(null);
     setPermissionDenied(false);
@@ -48,8 +48,48 @@ export default function UserWebcam({
       streamRef.current = stream;
 
       if (videoRef.current) {
+        // Assign the stream to the video element
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        
+        // Wait for video metadata to load before playing
+        await new Promise<void>((resolve, reject) => {
+          if (!videoRef.current) {
+            reject(new Error("Video element not found"));
+            return;
+          }
+
+          const videoElement = videoRef.current;
+
+          const onLoadedMetadata = () => {
+            videoElement.removeEventListener("loadedmetadata", onLoadedMetadata);
+            resolve();
+          };
+
+          const onError = (e: Event) => {
+            videoElement.removeEventListener("error", onError);
+            reject(new Error("Video loading error"));
+          };
+
+          videoElement.addEventListener("loadedmetadata", onLoadedMetadata);
+          videoElement.addEventListener("error", onError);
+
+          // If metadata is already loaded, resolve immediately
+          if (videoElement.readyState >= 2) {
+            videoElement.removeEventListener("loadedmetadata", onLoadedMetadata);
+            videoElement.removeEventListener("error", onError);
+            resolve();
+          }
+        });
+
+        // Now play the video with proper error handling
+        try {
+          await videoRef.current.play();
+          console.log("✅ Video playback started successfully");
+        } catch (playError: any) {
+          console.warn("⚠️ Video autoplay failed, attempting manual play:", playError);
+          // Some browsers block autoplay, but the video will still show
+          // User interaction might be needed to start playback
+        }
       }
 
       setCameraActive(true);
@@ -84,7 +124,6 @@ export default function UserWebcam({
       }
     }
   };
-
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => {
@@ -182,14 +221,17 @@ export default function UserWebcam({
 
   return (
     <div className={`relative ${className}`}>
-      {/* Video Element */}
+          {/* Video Element */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
+        controls={false}
+        webkit-playsinline="true"
         className="w-full h-full min-h-[400px] rounded-lg object-cover bg-black"
         data-testid="user-webcam-video"
+        style={{ objectFit: 'cover' }}
       />
 
       {/* Camera Controls Overlay */}
