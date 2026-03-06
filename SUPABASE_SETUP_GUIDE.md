@@ -84,9 +84,7 @@ This guide will help you set up the complete Supabase database for the **HireAI 
 Make sure your `.env.local` file has these Supabase credentials:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://ktmxilcslghutmajhozw.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0bXhpbGNzbGdodXRtYWpob3p3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2NTIwNzAsImV4cCI6MjA4NzIyODA3MH0.N3ZsTiy_X_eg7xVr4hL1g_KgVHmwZPBbBVViypLgTho
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0bXhpbGNzbGdodXRtYWpob3p3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTY1MjA3MCwiZXhwIjoyMDg3MjI4MDcwfQ.Ol6IPbMJfASjHb4okIsIB8zLkQjN8xjq1Lwkzvbnk_o
+
 ```
 
 ---
