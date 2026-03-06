@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Camera, CameraOff, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -23,18 +23,37 @@ export default function UserWebcam({
 }: UserWebcamProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isMountedRef = useRef(true);
   
   const [cameraActive, setCameraActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
-    const startCamera = async () => {
+  const startCamera = useCallback(async () => {
+    // Prevent starting if camera is already active
+    if (cameraActive || loading || streamRef.current) {
+      console.log("⚠️ Camera already active or starting");
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     setPermissionDenied(false);
 
     try {
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("getUserMedia is not supported in this browser");
+      }
+
+      // Log environment for debugging
+      console.log("Camera access attempt:", {
+        isSecureContext: window.isSecureContext,
+        protocol: window.location.protocol,
+        hostname: window.location.hostname
+      });
+
       // Request camera permission
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -44,6 +63,12 @@ export default function UserWebcam({
         },
         audio: false, // Audio handled by VAPI
       });
+      
+      // Check if component is still mounted
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
 
       streamRef.current = stream;
 
@@ -114,6 +139,8 @@ export default function UserWebcam({
         errorMessage = "Camera is already in use";
       } else if (err.name === "OverconstrainedError") {
         errorMessage = "Camera constraints not supported";
+      } else if (err.name === "TypeError" && err.message.includes("getUserMedia")) {
+        errorMessage = "Camera access not supported in this context";
       }
 
       setError(errorMessage);
@@ -123,8 +150,11 @@ export default function UserWebcam({
         onCameraError(new Error(errorMessage));
       }
     }
-  };
-  const stopCamera = () => {
+  }, [cameraActive, loading, onCameraReady, onCameraError]);
+
+  const stopCamera = useCallback(() => {
+    console.log("🛑 Stopping camera...");
+    
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => {
         track.stop();
@@ -138,18 +168,28 @@ export default function UserWebcam({
 
     setCameraActive(false);
     console.log("🛑 User webcam stopped");
-  };
+  }, []);
 
   useEffect(() => {
-    if (autoStart) {
+    isMountedRef.current = true;
+    
+    if (autoStart && !cameraActive && !loading && !streamRef.current) {
+      console.log("📹 Auto-starting camera...");
       startCamera();
     }
 
-    // Cleanup on unmount
+    // Cleanup ONLY on unmount
     return () => {
-      stopCamera();
+      console.log("🔄 Component unmounting, cleaning up camera...");
+      isMountedRef.current = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+        streamRef.current = null;
+      }
     };
-  }, [autoStart]);
+  }, [autoStart, cameraActive, loading, startCamera]);
 
   // Render fallback when camera is not active
   const renderFallback = () => (
@@ -221,14 +261,13 @@ export default function UserWebcam({
 
   return (
     <div className={`relative ${className}`}>
-          {/* Video Element */}
+      {/* Video Element */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
         controls={false}
-        webkit-playsinline="true"
         className="w-full h-full min-h-[400px] rounded-lg object-cover bg-black"
         data-testid="user-webcam-video"
         style={{ objectFit: 'cover' }}
