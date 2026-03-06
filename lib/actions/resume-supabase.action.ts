@@ -8,6 +8,7 @@ import {
   extractTextFromPDF,
   extractTextFromDOCX,
 } from "@/lib/groq";
+import { matchSkills } from "@/lib/skills-matcher";
 
 /* ============================================================
    RESUME UPLOAD & PARSING
@@ -159,6 +160,18 @@ export async function createResumeAnalysis(
       missing: aiAnalysis.keywords?.missing ?? [],
     };
 
+    
+    /* ---------- SKILL MATCHING ---------- */
+    let skillsMatch = undefined;
+    if (jobRole) {
+      const skillMatchResult = matchSkills(resumeText, jobRole);
+      skillsMatch = {
+        requiredSkills: skillMatchResult.requiredSkills,
+        detectedSkills: skillMatchResult.detectedSkills,
+        missingSkills: skillMatchResult.missingSkills,
+      };
+    }
+
     const analysisId = generateId();
 
     const analysis: ResumeAnalysis = {
@@ -174,6 +187,8 @@ export async function createResumeAnalysis(
       keywords: keywordsObject,
       atsCompatibility: atsCompatibilityNumber,
       createdAt: new Date().toISOString(),
+        jobRole,
+      skillsMatch,
     };
 
     /* ---------- INSERT ---------- */
@@ -191,6 +206,8 @@ export async function createResumeAnalysis(
       keywords: keywordsObject,   // ✅ correct JSON
       ats_compatibility: atsCompatibilityNumber,
       created_at: analysis.createdAt,
+          job_role: jobRole || null,
+      skills_match: skillsMatch || null,
     });
 
     if (error) {
@@ -286,5 +303,7 @@ function mapRowToAnalysis(row: any): ResumeAnalysis {
 
     atsCompatibility: Number(row.ats_compatibility),
     createdAt: row.created_at,
+       jobRole: row.job_role,
+    skillsMatch: row.skills_match,
   };
 }

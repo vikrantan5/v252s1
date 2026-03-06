@@ -149,6 +149,13 @@ export interface ResumeAnalysis {
   };
   atsCompatibility: number;
   createdAt: string;
+    // Missing Skills Feature
+  jobRole?: string;
+  skillsMatch?: {
+    requiredSkills: string[];
+    detectedSkills: string[];
+    missingSkills: string[];
+  };
 }
 
 export interface CreateResumeAnalysisParams {

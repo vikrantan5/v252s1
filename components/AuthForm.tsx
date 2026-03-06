@@ -62,12 +62,8 @@ export default function AuthForm({ type }: { type: "sign-in" | "sign-up" }) {
 
         if (result.success) {
           toast.success("Account created successfully!");
-          // Redirect based on role
-          if (formData.role === "recruiter") {
-            router.push("/recruiter/dashboard");
-          } else {
-            router.push("/jobseeker/jobs");
-          }
+             // Redirect to welcome page
+          router.push("/welcome");
         } else {
           toast.error(result.error || "Failed to create account");
         }
@@ -88,12 +84,8 @@ export default function AuthForm({ type }: { type: "sign-in" | "sign-up" }) {
 
         if (result.success && result.user) {
           toast.success("Signed in successfully!");
-          // Redirect based on role
-          if (result.user.role === "recruiter") {
-            router.push("/recruiter/dashboard");
-          } else {
-            router.push("/jobseeker/jobs");
-          }
+            // Redirect to welcome page
+          router.push("/welcome");
         } else {
           toast.error(result.error || "Failed to sign in");
         }

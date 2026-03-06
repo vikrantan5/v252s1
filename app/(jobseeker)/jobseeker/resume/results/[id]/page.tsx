@@ -6,11 +6,13 @@ import Link from "next/link";
 import { auth } from "@/lib/firebase/client";
 import { getResumeAnalysisById } from "@/lib/actions/resume-supabase.action";
 import { ResumeAnalysis } from "@/types";
+import { getRoleDisplayName, SKILL_RESOURCES } from "@/lib/skills-matcher";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CheckCircle2,
   XCircle,
@@ -18,6 +20,8 @@ import {
   Download,
   ArrowLeft,
   AlertCircle,
+  ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
 
 export default function ResumeAnalysisResultsPage() {
@@ -95,7 +99,7 @@ const loadAnalysis = async () => {
     if (score >= 40)
       return "bg-yellow-100 text-yellow-800 border-yellow-300";
 
-    return "bg-red-100 text-red-800 border-red-300"; // ✅ FIXED DEFAULT
+    return "bg-red-100 text-red-800 border-red-300";
   };
 
   // ---------------- LOADING ----------------
@@ -199,68 +203,244 @@ const loadAnalysis = async () => {
           </CardContent>
         </Card>
 
-        {/* CATEGORY SCORES */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Category Breakdown</CardTitle>
-          </CardHeader>
+        {/* TAB NAVIGATION */}
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="strengths">Strengths</TabsTrigger>
+            <TabsTrigger value="improvements">Improvements</TabsTrigger>
+            <TabsTrigger value="missing-skills">Missing Skills</TabsTrigger>
+          </TabsList>
 
-          <CardContent className="space-y-6">
-            {Object.entries(analysis.categoryScores || {}).map(
-              ([category, score], idx) => (
-                <div key={idx}>
-                  <div className="flex justify-between">
-                    <span className="capitalize font-medium">
-                      {category}
-                    </span>
-                    <span className={getScoreColor(score)}>
-                      {score}/100
-                    </span>
-                  </div>
-                  <Progress value={score} className="h-2" />
+          {/* OVERVIEW TAB */}
+          <TabsContent value="overview">
+            <Card>
+              <CardHeader>
+                <CardTitle>Category Breakdown</CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-6">
+                {Object.entries(analysis.categoryScores || {}).map(
+                  ([category, score], idx) => (
+                    <div key={idx}>
+                      <div className="flex justify-between">
+                        <span className="capitalize font-medium">
+                          {category}
+                        </span>
+                        <span className={getScoreColor(score)}>
+                          {score}/100
+                        </span>
+                      </div>
+                      <Progress value={score} className="h-2" />
+                    </div>
+                  )
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* STRENGTHS TAB */}
+          <TabsContent value="strengths">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-green-700 flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5" />
+                  Strengths
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analysis.strengths.map((s, i) => (
+                    <div key={i} className="flex gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                      <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-gray-800">{s}</p>
+                    </div>
+                  ))}
                 </div>
-              )
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* IMPROVEMENTS TAB */}
+          <TabsContent value="improvements">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-orange-700 flex gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Areas for Improvement
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analysis.improvements.map((s, i) => (
+                    <div key={i} className="flex gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                      <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-gray-800">{s}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* MISSING SKILLS TAB */}
+          <TabsContent value="missing-skills">
+            {analysis.skillsMatch && analysis.jobRole ? (
+              <div className="space-y-6">
+                {/* Job Role Section */}
+                <Card className="border-blue-200 bg-blue-50">
+                  <CardHeader>
+                    <CardTitle className="text-blue-900">Target Job Role</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-900">
+                      {getRoleDisplayName(analysis.jobRole)}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Required Skills */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Required Skills for this Role</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {analysis.skillsMatch.requiredSkills.map((skill, idx) => (
+                        <Badge
+                          key={idx}
+                          variant="outline"
+                          className="px-3 py-1.5 text-sm"
+                        >
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Detected Skills */}
+                <Card className="border-green-200">
+                  <CardHeader>
+                    <CardTitle className="text-green-700 flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5" />
+                      Detected Skills in Your Resume
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {analysis.skillsMatch.detectedSkills.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {analysis.skillsMatch.detectedSkills.map((skill, idx) => (
+                          <Badge
+                            key={idx}
+                            className="bg-green-100 text-green-800 border-green-300 px-3 py-1.5 text-sm"
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            {skill}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-600">No matching skills detected</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Missing Skills - HIGHLIGHTED */}
+                <Card className="border-red-300 bg-red-50">
+                  <CardHeader>
+                    <CardTitle className="text-red-700 flex items-center gap-2">
+                      <AlertTriangle className="h-6 w-6" />
+                      Missing Skills
+                    </CardTitle>
+                    <p className="text-sm text-red-600 mt-2">
+                      These skills are required for the role but were not found in your resume
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    {analysis.skillsMatch.missingSkills.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {analysis.skillsMatch.missingSkills.map((skill, idx) => (
+                          <Badge
+                            key={idx}
+                            className="bg-red-200 text-red-900 border-red-400 px-3 py-2 text-sm font-semibold"
+                          >
+                            <AlertTriangle className="h-4 w-4 mr-1" />
+                            {skill}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
+                        <p className="text-lg font-semibold text-green-700">
+                          Great! All required skills found in your resume
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Learning Resources */}
+                {analysis.skillsMatch.missingSkills.length > 0 && (
+                  <Card className="border-purple-200 bg-purple-50">
+                    <CardHeader>
+                      <CardTitle className="text-purple-900 flex items-center gap-2">
+                        <ExternalLink className="h-5 w-5" />
+                        Recommended Learning Resources
+                      </CardTitle>
+                      <p className="text-sm text-purple-700 mt-2">
+                        Start learning these skills to improve your resume
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {analysis.skillsMatch.missingSkills.slice(0, 8).map((skill, idx) => {
+                          const url = SKILL_RESOURCES[skill] || `https://www.google.com/search?q=learn+${encodeURIComponent(skill)}`;
+                          return (
+                            <a
+                              key={idx}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-3 bg-white rounded-lg border border-purple-200 hover:border-purple-400 hover:shadow-md transition-all group"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                                  <ExternalLink className="h-5 w-5 text-purple-600" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-gray-900">{skill}</p>
+                                  <p className="text-xs text-gray-500">Click to learn more</p>
+                                </div>
+                              </div>
+                              <ExternalLink className="h-4 w-4 text-purple-400 group-hover:text-purple-600" />
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-2">
+                    Missing skills analysis not available
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Make sure to select a job role when analyzing your resume
+                  </p>
+                  <Link href="/jobseeker/resume">
+                    <Button className="mt-4">Analyze New Resume</Button>
+                  </Link>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
-
-        {/* STRENGTHS & IMPROVEMENTS */}
-        <div className="grid lg:grid-cols-2 gap-6 mb-6">
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-green-700 flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5" />
-                Strengths
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {analysis.strengths.map((s, i) => (
-                <div key={i} className="flex gap-2 mb-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600 mt-1" />
-                  {s}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-orange-700 flex gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Areas for Improvement
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {analysis.improvements.map((s, i) => (
-                <div key={i} className="flex gap-2 mb-2">
-                  <AlertCircle className="h-4 w-4 text-orange-600 mt-1" />
-                  {s}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
