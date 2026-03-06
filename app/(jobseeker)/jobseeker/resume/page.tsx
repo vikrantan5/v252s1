@@ -154,7 +154,7 @@ function ResumeAnalyzerContent() {
         resumeText: uploadResult.resumeText,
         jobDescription: job?.description || "",
         jobCategory: categoryLabel,
-        jobRole: roleLabel,
+      jobRole: jobRole,
       });
 
       if (analysisResult.success && analysisResult.analysisId) {
