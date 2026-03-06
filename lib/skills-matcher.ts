@@ -2,6 +2,10 @@
 
 import { ROLE_SKILLS, SKILL_RESOURCES } from "./skills-database";
 
+
+// Re-export SKILL_RESOURCES for convenience
+export { SKILL_RESOURCES };
+
 export interface SkillMatchResult {
   requiredSkills: string[];
   detectedSkills: string[];
