@@ -31,12 +31,14 @@ export function extractSkillsFromText(text: string): string[] {
   // Check for each skill in the resume text
   allSkills.forEach((skill) => {
     const skillLower = skill.toLowerCase();
+     const skillWithoutDots = skillLower.replace(/\./g, "");
+    const skillWithoutSpaces = skillLower.replace(/\s+/g, "");
     
     // Check for exact match or common variations
     if (
       normalizedText.includes(skillLower) ||
-      normalizedText.includes(skillLower.replace(/./g, "")) ||
-      normalizedText.includes(skillLower.replace(/s+/g, ""))
+       (skillWithoutDots.length > 0 && normalizedText.includes(skillWithoutDots)) ||
+      (skillWithoutSpaces.length > 0 && normalizedText.includes(skillWithoutSpaces))
     ) {
       detectedSkills.add(skill);
     }
